@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>老師端管理介面 — 流程圖配對練習</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* ── Teacher-only styles ── */
+    .t-layout { display:flex; height:calc(100vh - 56px); overflow:hidden; }
+    .t-sidebar {
+      width:200px; min-width:200px;
+      background:white; border-right:1px solid #e5e7eb;
+      padding:20px 12px; display:flex; flex-direction:column; gap:6px;
+    }
+    .t-nav-btn {
+      display:flex; align-items:center; gap:10px;
+      padding:10px 14px; border-radius:12px; border:none;
+      background:transparent; cursor:pointer;
+      font-size:.9rem; font-weight:600; color:#6b7280;
+      text-align:left; transition:background .15s, color .15s;
+    }
+    .t-nav-btn:hover { background:#f3f4f6; color:#4f46e5; }
+    .t-nav-btn.active { background:#ede9fe; color:#4f46e5; }
+    .t-nav-icon { font-size:1.1rem; }
+    .t-content { flex:1; overflow-y:auto; padding:28px 32px; }
+    .section { display:none; }
+    .section.active { display:block; }
+
+    /* ── Sub-mode tabs ── */
+    .mode-tabs { display:flex; gap:4px; margin-bottom:20px; }
+    .mode-tab {
+      padding:8px 18px; border-radius:10px; border:none;
+      font-size:.85rem; font-weight:600; cursor:pointer;
+      background:#f3f4f6; color:#6b7280; transition:background .15s, color .15s;
+    }
+    .mode-tab.active { background:#4f46e5; color:white; }
+    .mode-panel { display:none; }
+    .mode-panel.active { display:block; }
+
+    /* ── Builder canvas ── */
+    #builderCanvas {
+      width:100%; height:420px;
+      border:2px solid #e5e7eb; border-radius:14px;
+      background:white; position:relative; overflow:hidden; cursor:default;
+    }
+    .builder-node {
+      position:absolute; cursor:move; user-select:none;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.8rem; font-weight:700; text-align:center;
+    }
+    .builder-node.rect {
+      background:#ede9fe; border:2px solid #a78bfa;
+      border-radius:10px; min-width:120px; height:44px; padding:0 12px;
+    }
+    .builder-node.diamond-wrap {
+      width:90px; height:90px;
+    }
+    .builder-node.diamond-inner {
+      width:80px; height:80px;
+      background:#fef3c7; border:2px solid #f59e0b;
+      border-radius:4px; transform:rotate(45deg);
+    }
+    .builder-node.diamond-inner span { transform:rotate(-45deg); display:block; font-size:.72rem; }
+    .builder-node.selected { outline:3px solid #4f46e5; outline-offset:2px; }
+    .builder-node .del-node {
+      position:absolute; top:-8px; right:-8px;
+      background:#ef4444; color:white; border:none; border-radius:50%;
+      width:18px; height:18px; font-size:.7rem; cursor:pointer;
+      display:none; align-items:center; justify-content:center;
+    }
+    .builder-node:hover .del-node { display:flex; }
+
+    /* ── Image preview ── */
+    #imgPreview {
+      max-width:100%; max-height:300px; border-radius:12px;
+      border:1px solid #e5e7eb; margin:12px 0; display:none;
+    }
+    #aiResult {
+      background:#f0fdf4; border:1px solid #86efac;
+      border-radius:12px; padding:16px; margin-top:12px; display:none;
+    }
+
+    /* ── JSON editor ── */
+    #jsonEditor {
+      width:100%; height:300px;
+      font-family:'Courier New', monospace; font-size:.82rem;
+      border:2px solid #e5e7eb; border-radius:12px; padding:12px;
+      outline:none; resize:vertical;
+    }
+    #jsonEditor:focus { border-color:#4f46e5; }
+
+    /* ── Scores table ── */
+    .score-filter { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+
+<!-- ── 登入遮罩 ── -->
+<div id="loginOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-icon">🔐</div>
+    <h2 class="modal-title">老師端管理介面</h2>
+    <p class="modal-desc">請輸入老師密碼</p>
+    <div class="form-group">
+      <input type="password" id="teacherPw" class="form-input" placeholder="老師密碼" />
+    </div>
+    <button class="btn btn-primary w-full" onclick="doTeacherLogin()">登入</button>
+    <div class="form-error" id="loginError">密碼錯誤</div>
+    <p class="text-sm text-gray mt-4">預設密碼：<strong>teacher123</strong></p>
+  </div>
+</div>
+
+<!-- ── 頂部列 ── -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span class="icon">🔧</span>
+    老師端管理介面
+  </div>
+  <div class="topbar-right">
+    <a href="index.html?q=Q001" target="_blank" class="btn btn-outline btn-sm">🔗 學生端預覽</a>
+  </div>
+</div>
+
+<!-- ── 主畫面 ── -->
+<div id="mainLayout" class="t-layout hidden">
+
+  <!-- 左側導覽 -->
+  <div class="t-sidebar">
+    <p style="font-size:.72rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding:0 4px;">功能選單</p>
+    <button class="t-nav-btn active" onclick="showSection('questions')" id="nav-questions">
+      <span class="t-nav-icon">📋</span> 題目管理
+    </button>
+    <button class="t-nav-btn" onclick="showSection('addQuestion')" id="nav-addQuestion">
+      <span class="t-nav-icon">➕</span> 新增題目
+    </button>
+    <button class="t-nav-btn" onclick="showSection('scores')" id="nav-scores">
+      <span class="t-nav-icon">📊</span> 成績查看
+    </button>
+    <div style="margin-top:auto; padding-top:16px; border-top:1px solid #f3f4f6;">
+      <button class="t-nav-btn" onclick="doLogout()" style="color:#ef4444;">
+        <span class="t-nav-icon">🚪</span> 登出
+      </button>
+    </div>
+  </div>
+
+  <!-- 右側內容 -->
+  <div class="t-content">
+
+    <!-- ── 題目管理 ── -->
+    <div class="section active" id="section-questions">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <h2 style="font-size:1.2rem;font-weight:700;color:#1e1b4b;">📋 題目管理</h2>
+        <button class="btn btn-primary btn-sm" onclick="showSection('addQuestion')">➕ 新增題目</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div id="questionListLoading" style="padding:40px;text-align:center;color:#9ca3af;">
+          <div class="spinner" style="margin:0 auto 12px;"></div>載入中…
+        </div>
+        <div id="questionListEmpty" style="padding:40px;text-align:center;color:#9ca3af;display:none;">
+          還沒有題目，點右上角「新增題目」開始建立！
+        </div>
+        <table class="data-table" id="questionTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>題目 ID</th>
+              <th>題目名稱</th>
+              <th>節點數</th>
+              <th>開放狀態</th>
+              <th>學生連結</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="questionTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 新增題目 ── -->
+    <div class="section" id="section-addQuestion">
+      <h2 style="font-size:1.2rem;font-weight:700;color:#1e1b4b;margin-bottom:16px;">➕ 新增題目</h2>
+
+      <div class="form-group">
+        <label class="form-label">題目名稱</label>
+        <input type="text" id="newTitle" class="form-input" placeholder="例如：泡茶流程" />
+      </div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" onclick="switchMode('image')">📷 上傳圖片（AI辨識）</button>
+        <button class="mode-tab" onclick="switchMode('builder')">🖱️ 視覺介面</button>
+        <button class="mode-tab" onclick="switchMode('json')">🔧 JSON 編輯</button>
+      </div>
+
+      <!-- Mode A: 圖片上傳 -->
+      <div class="mode-panel active" id="mode-image">
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('imgInput').click()">
+          <div class="upload-icon">📷</div>
+          <div class="upload-text">點擊或拖曳上傳流程圖圖片</div>
+          <div class="upload-sub">支援 PNG / JPG，建議從 PPT 或 Canva 截圖</div>
+          <input type="file" id="imgInput" accept="image/*" style="display:none;" onchange="handleImageSelect(event)" />
+        </div>
+        <img id="imgPreview" alt="圖片預覽" />
+        <div id="aiLoadingMsg" style="text-align:center;display:none;padding:16px;">
+          <div class="spinner"></div>
+          <p style="margin-top:10px;color:#6b7280;font-size:.88rem;">AI 辨識中，請稍候…</p>
+        </div>
+        <div id="aiResult">
+          <p style="font-weight:700;color:#065f46;margin-bottom:10px;">✅ AI 辨識完成，請確認以下結果：</p>
+          <div id="aiResultPreview"></div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-success btn-sm" onclick="saveFromAI()">✅ 確認儲存</button>
+            <button class="btn btn-ghost btn-sm" onclick="switchMode('json')">✏️ 切換 JSON 編輯</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode B: 視覺介面 -->
+      <div class="mode-panel" id="mode-builder">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="builderAddNode('rect')">＋ 矩形</button>
+          <button class="btn btn-outline btn-sm" onclick="builderAddNode('diamond')">＋ 菱形</button>
+          <button class="btn btn-sm" id="connectBtn" onclick="toggleConnectMode()"
+            style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">🔗 連線模式</button>
+          <button class="btn btn-ghost btn-sm" onclick="builderClear()">🗑️ 清除全部</button>
+        </div>
+        <div id="builderCanvas">
+          <svg id="builderSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;">
+            <defs>
+              <marker id="barrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
+              </marker>
+            </defs>
+          </svg>
+          <div id="builderNodes"></div>
+          <p id="builderHint" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:#9ca3af;font-size:.78rem;">點選上方按鈕新增節點，雙擊節點可編輯文字</p>
+        </div>
+        <div id="connLabel" style="display:none;margin-top:10px;">
+          <label class="form-label">連線標籤（選填，例如 Yes / No）</label>
+          <input type="text" id="connLabelInput" class="form-input" style="max-width:200px;" placeholder="空白表示無標籤" />
+          <button class="btn btn-primary btn-sm" style="margin-left:8px;" onclick="confirmConnect()">確認連線</button>
+          <button class="btn btn-ghost btn-sm" style="margin-left:4px;" onclick="cancelConnect()">取消</button>
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="saveFromBuilder()">💾 儲存題目</button>
+      </div>
+
+      <!-- Mode C: JSON 編輯 -->
+      <div class="mode-panel" id="mode-json">
+        <p style="font-size:.82rem;color:#9ca3af;margin-bottom:8px;">📌 進階使用者可直接編輯 JSON 格式。格式說明請參考 README.md</p>
+        <textarea id="jsonEditor" placeholder='{
+  "nodes": [
+    { "id": "n1", "type": "rect", "label": "步驟一" },
+    { "id": "n2", "type": "diamond", "label": "條件?" }
+  ],
+  "connections": [
+    { "from": "n1", "to": "n2" }
+  ],
+  "layout": [
+    { "id": "n1", "row": 0, "col": 0 },
+    { "id": "n2", "row": 1, "col": 0 }
+  ]
+}'></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="saveFromJSON()">💾 儲存題目</button>
+          <button class="btn btn-ghost btn-sm" onclick="validateJSON()">✔ 驗證格式</button>
+        </div>
+        <div id="jsonError" style="color:#ef4444;font-size:.82rem;margin-top:8px;display:none;"></div>
+        <div id="jsonOk" style="color:#059669;font-size:.82rem;margin-top:8px;display:none;">✅ 格式正確</div>
+      </div>
+    </div>
+
+    <!-- ── 成績查看 ── -->
+    <div class="section" id="section-scores">
+      <h2 style="font-size:1.2rem;font-weight:700;color:#1e1b4b;margin-bottom:16px;">📊 成績查看</h2>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="score-filter">
+          <div>
+            <label class="form-label">篩選題目</label>
+            <select id="scoreFilterQ" class="form-select" style="min-width:160px;" onchange="loadScores()">
+              <option value="">全部題目</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">篩選學生座號</label>
+            <input type="text" id="scoreFilterS" class="form-input" style="max-width:140px;" placeholder="例如：101" onchange="loadScores()" />
+          </div>
+          <div style="align-self:flex-end;">
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ 匯出 CSV</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div id="scoreLoading" style="padding:40px;text-align:center;color:#9ca3af;">
+          <div class="spinner" style="margin:0 auto 12px;"></div>載入中…
+        </div>
+        <div id="scoreEmpty" style="padding:40px;text-align:center;color:#9ca3af;display:none;">目前尚無成績紀錄</div>
+        <table class="data-table" id="scoreTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>時間</th>
+              <th>座號</th>
+              <th>姓名</th>
+              <th>題目</th>
+              <th>得分</th>
+              <th>明細</th>
+            </tr>
+          </thead>
+          <tbody id="scoreTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /.t-content -->
+</div><!-- /#mainLayout -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="js/teacher.js"></script>
+</body>
+</html>
