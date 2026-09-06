@@ -61,9 +61,8 @@ function verifyStudent(studentId, password) {
   const data  = sheet.getDataRange().getValues();
   // 欄位：A=班級[0] | B=座號[1] | C=姓名[2] | D=帳號[3] | E=密碼[4]
   for (let i = 1; i < data.length; i++) {
-    // 假設學生用「帳號(D)」或「座號(B)」登入？這裡支援座號登入。
-    // 如果你要他們用「帳號」登入，請把 data[i][1] 改成 data[i][3]
-    if (String(data[i][1]) === String(studentId) &&
+    // 改為使用「帳號(D)」欄位作為登入帳號 (例如班級座號)
+    if (String(data[i][3]) === String(studentId) &&
         String(data[i][4]) === String(password)) {
       return { ok: true, name: data[i][2], class: data[i][0] };
     }
