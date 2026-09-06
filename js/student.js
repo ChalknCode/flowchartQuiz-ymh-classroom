@@ -2,7 +2,7 @@
 //  student.js — 學生端邏輯 (更新為 3-Zone Layout + 新版型)
 // ============================================================
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzAy4EEJefI75J0mepynHmT5-vMZ9WVnOf62jyYZSZVyntcBV1f7ioUa48gNqVAFcfv/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyAunNjzFK6JYtvG5iEFbpJEblQNtyQgEWlXyNiW4h1yEpXJE3kWu5qUA0ZaHzG0HVj/exec';
 
 // ── 狀態 ──
 let currentStudent  = null;
