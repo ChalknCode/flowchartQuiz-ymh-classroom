@@ -4,7 +4,7 @@
 // ============================================================
 
 // ── 設定你的 Google Sheets ID（從試算表網址複製）──
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
+const SPREADSHEET_ID = '1TSKaYAxUGXN1Dfvw6NAvt_btJLiziNW9VQam8LUF8LY';
 
 // ── Gemini API Key（從 Google AI Studio 取得）──
 const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY_HERE';

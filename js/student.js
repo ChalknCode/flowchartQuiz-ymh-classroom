@@ -4,7 +4,7 @@
 // ============================================================
 
 // ── 設定：部署後填入 Apps Script 網址 ──
-const APPS_SCRIPT_URL = '';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwQfpu_-jkffP2ZKkBzMmNxkoxYGK1aN2nRY499DutNvrb773P1dCDLGzeCXwNYU8Xk/exec';
 
 // ── 佈局常數 ──
 const COL_W       = 240;   // 每欄寬度（px）

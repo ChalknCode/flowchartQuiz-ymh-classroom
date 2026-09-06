@@ -3,7 +3,7 @@
 //  flowchartQuiz-ymh-classroom
 // ============================================================
 
-const APPS_SCRIPT_URL  = '';        // 部署後填入
+const APPS_SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbwQfpu_-jkffP2ZKkBzMmNxkoxYGK1aN2nRY499DutNvrb773P1dCDLGzeCXwNYU8Xk/exec';
 const TEACHER_PASSWORD = 'teacher123';
 
 // ── 狀態 ──
