@@ -117,7 +117,8 @@ function saveQuestion(data) {
   const jsonStr = JSON.stringify({
     nodes:       data.nodes,
     connections: data.connections,
-    layout:      data.layout
+    layout:      data.layout,
+    time_limit:  data.time_limit || 300
   });
   // A=id, B=title, C=active, D=data
   sheet.appendRow([newId, data.title, true, jsonStr]);
@@ -132,7 +133,8 @@ function updateQuestion(data) {
       const jsonStr = JSON.stringify({
         nodes:       data.nodes,
         connections: data.connections,
-        layout:      data.layout
+        layout:      data.layout,
+        time_limit:  data.time_limit || 300
       });
       sheet.getRange(i + 1, 2).setValue(data.title); // B欄
       sheet.getRange(i + 1, 4).setValue(jsonStr);    // D欄

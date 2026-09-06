@@ -76,7 +76,7 @@ async function initDashboard() {
 // ── 題庫管理 (Questions) ──
 async function loadQuestions() {
   try {
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=getQuestions`);
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=getAllQuestions`);
     const json = await res.json();
     if(json.ok) {
       allQuestions = json.questions;
@@ -169,12 +169,19 @@ async function saveQuestion() {
   dataObj.question_id = qid;
   dataObj.title = title;
 
+  dataObj.time_limit = timeLimit;
+  
+  const isExisting = allQuestions.some(q => q.question_id === qid);
+  
   const payload = {
-    action: 'saveQuestion',
+    action: isExisting ? 'updateQuestion' : 'saveQuestion',
     data: {
       question_id: qid,
       title: title,
-      data: dataObj
+      nodes: dataObj.nodes,
+      connections: dataObj.connections,
+      layout: dataObj.layout,
+      time_limit: dataObj.time_limit
     }
   };
   
