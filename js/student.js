@@ -317,7 +317,7 @@ function renderLines() {
       const endY = (dR.top - canvasRect.top) + (dR.height / 2);
       const outX = Math.max(startX, endX) + 40;
       
-      pathD = \`M \${startX} \${startY} L \${outX} \${startY} L \${outX} \${endY} L \${endX} \${endY}\`;
+      pathD = `M ${startX} ${startY} L ${outX} ${startY} L ${outX} ${endY} L ${endX} ${endY}`;
       x1 = startX; x2 = endX; y1 = startY; y2 = endY;
     }
     else if (srcNode.type === 'diamond') {
@@ -329,17 +329,17 @@ function renderLines() {
         x1 = (sR.left - canvasRect.left);
         y1 = (sR.top - canvasRect.top) + (sR.height / 2);
       }
-      pathD = \`M \${x1} \${y1} L \${x2} \${y1} L \${x2} \${y2}\`;
+      pathD = `M ${x1} ${y1} L ${x2} ${y1} L ${x2} ${y2}`;
     } else {
       if (Math.abs(x1 - x2) > 10) {
         const midY = (y1 + y2) / 2;
-        pathD = \`M \${x1} \${y1} L \${x1} \${midY} L \${x2} \${midY} L \${x2} \${y2}\`;
+        pathD = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
       } else {
-        pathD = \`M \${x1} \${y1} L \${x2} \${y2}\`;
+        pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
       }
     }
     
-    svg.innerHTML += \`<path d="\${pathD}" fill="none" stroke="#a78bfa" stroke-width="3" marker-end="url(#arrow)" />\`;
+    svg.innerHTML += `<path d="${pathD}" fill="none" stroke="#a78bfa" stroke-width="3" marker-end="url(#arrow)" />`;
     
     if(c.label) {
       let mx, my;
@@ -354,12 +354,12 @@ function renderLines() {
         my = (y1 + y2) / 2;
       }
       
-      svg.innerHTML += \`
+      svg.innerHTML += `
         <g>
-          <rect x="\${mx-20}" y="\${my-10}" width="40" height="20" fill="rgba(255,255,255,0.9)" rx="4"/>
-          <text x="\${mx}" y="\${my+4}" fill="#6366f1" font-size="12" font-weight="900" text-anchor="middle">\${c.label}</text>
+          <rect x="${mx-20}" y="${my-10}" width="40" height="20" fill="rgba(255,255,255,0.9)" rx="4"/>
+          <text x="${mx}" y="${my+4}" fill="#6366f1" font-size="12" font-weight="900" text-anchor="middle">${c.label}</text>
         </g>
-      \`;
+      `;
     }
   });
 }
