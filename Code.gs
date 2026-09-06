@@ -172,10 +172,28 @@ function toggleActive(questionId, active) {
 // ============================================================
 function submitScore(data) {
   const sheet = getSheet('分數');
-  // 欄位：A=送出時間[0] | B=學生帳號[1] | C=Question_id[2] | D=分數[3] | E=Details[4]
+  
+  // 查表取得班級、座號、姓名
+  const studentSheet = getSheet('學生驗證資料');
+  const studentData = studentSheet.getDataRange().getValues();
+  let sClass = '', sSeat = '', sName = '';
+  for(let i=1; i<studentData.length; i++) {
+    // A=帳號[0] | B=班級[1] | C=座號[2] | D=姓名[3]
+    if(String(studentData[i][0]) === String(data.student_id)) {
+      sClass = studentData[i][1];
+      sSeat  = studentData[i][2];
+      sName  = studentData[i][3];
+      break;
+    }
+  }
+
+  // 欄位：A=送出時間 | B=學生帳號 | C=班級 | D=座號 | E=姓名 | F=Question_id | G=分數 | H=Details
   sheet.appendRow([
     new Date(),
     data.student_id,
+    sClass,
+    sSeat,
+    sName,
     data.question_id,
     data.score,
     JSON.stringify(data.detail)
@@ -188,35 +206,21 @@ function getScores(questionId, studentId) {
   const data  = sheet.getDataRange().getValues();
   let scores = data.slice(1).filter(r => !!r[0]);
   
-  if (questionId) scores = scores.filter(r => String(r[2]) === String(questionId));
+  // 欄位：A[0]=時間, B[1]=帳號, C[2]=班級, D[3]=座號, E[4]=姓名, F[5]=Qid, G[6]=分數, H[7]=Details
+  if (questionId) scores = scores.filter(r => String(r[5]) === String(questionId));
   if (studentId)  scores = scores.filter(r => String(r[1]) === String(studentId));
   
-  // 取得學生驗證資料，建立 ID -> 班級, 姓名 的 mapping
-  const studentSheet = getSheet('學生驗證資料');
-  const studentData = studentSheet.getDataRange().getValues();
-  const studentMap = {};
-  for (let i = 1; i < studentData.length; i++) {
-    // 欄位：A=帳號[0] | B=班級[1] | C=座號[2] | D=姓名[3] | E=密碼[4]
-    studentMap[String(studentData[i][0])] = {
-      class: studentData[i][1],
-      name: studentData[i][3]
-    };
-  }
-
   const result = scores.map(r => {
-    const sId = String(r[1]);
-    const info = studentMap[sId] || { class: '未知班級', name: '未知學生' };
-    
     let detail = {};
-    try { detail = JSON.parse(r[4] || '{}'); } catch(e) {}
+    try { detail = JSON.parse(r[7] || '{}'); } catch(e) {}
     
     return {
       timestamp: Utilities.formatDate(new Date(r[0]), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss'),
-      student_class: info.class,
-      student_id: sId,
-      student_name: info.name,
-      question_id: r[2],
-      score: r[3],
+      student_class: r[2],
+      student_id: String(r[1]),
+      student_name: r[4],
+      question_id: r[5],
+      score: r[6],
       detail: detail
     };
   });
