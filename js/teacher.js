@@ -1,699 +1,663 @@
-// ============================================================
-//  teacher.js — 老師端邏輯
-//  flowchartQuiz-ymh-classroom
-// ============================================================
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzqpx68O_39_O1MK2aXFLg1dP97r4RVyDzKG7ES9mmc6L79WgQ4KfmBxvw2JTGqSWNS/exec';
 
-const APPS_SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbwQfpu_-jkffP2ZKkBzMmNxkoxYGK1aN2nRY499DutNvrb773P1dCDLGzeCXwNYU8Xk/exec';
-const TEACHER_PASSWORD = 'teacher123';
-
-// ── 狀態 ──
+// ── State ──
 let allQuestions = [];
-let pendingAIData = null;  // AI 辨識結果暫存
+let allScores = [];
+let currentQuestionId = null;
 
-// ── Builder 狀態 ──
-let builderNodes   = [];  // {id, type, label, x, y}
-let builderConns   = [];  // {from, to, label}
-let nodeCounter    = 0;
-let connectMode    = false;
-let connectFrom    = null;
-let dragNode       = null;
-let dragOffX       = 0, dragOffY = 0;
+// ── Init ──
+window.onload = () => {
+  // If already logged in (sessionStorage), hide login
+  if(sessionStorage.getItem('teacherLoggedIn')) {
+    document.getElementById('viewLogin').style.display = 'none';
+    initDashboard();
+  }
+};
 
-// ── Mock 資料 ──
-const MOCK_QUESTIONS_TEACHER = [
-  {
-    question_id: 'Q001', title: '🍵 泡茶流程（線性）',
-    node_count: 5, is_active: true, created_at: '2026-09-06',
-    data: {
-      nodes: [
-        {id:'n1',type:'rect',label:'燒開水'}, {id:'n2',type:'rect',label:'放入茶葉'},
-        {id:'n3',type:'rect',label:'注入熱水'}, {id:'n4',type:'rect',label:'等待3分鐘'},
-        {id:'n5',type:'rect',label:'倒入茶杯'},
-      ],
-      connections: [{from:'n1',to:'n2'},{from:'n2',to:'n3'},{from:'n3',to:'n4'},{from:'n4',to:'n5'}],
-      layout: [{id:'n1',row:0,col:0},{id:'n2',row:1,col:0},{id:'n3',row:2,col:0},{id:'n4',row:3,col:0},{id:'n5',row:4,col:0}],
-    }
-  },
-  {
-    question_id: 'Q002', title: '📊 判斷成績（選擇結構）',
-    node_count: 5, is_active: false, created_at: '2026-09-06',
-    data: {
-      nodes: [
-        {id:'n1',type:'rect',label:'輸入成績'}, {id:'n2',type:'diamond',label:'成績≥60?'},
-        {id:'n3',type:'rect',label:'顯示及格'}, {id:'n4',type:'rect',label:'顯示不及格'},
-        {id:'n5',type:'rect',label:'結束'},
-      ],
-      connections: [{from:'n1',to:'n2'},{from:'n2',to:'n3',label:'Yes'},{from:'n2',to:'n4',label:'No'},{from:'n3',to:'n5'},{from:'n4',to:'n5'}],
-      layout: [{id:'n1',row:0,col:1},{id:'n2',row:1,col:1},{id:'n3',row:2,col:0},{id:'n4',row:2,col:2},{id:'n5',row:3,col:1}],
-    }
-  },
-];
+// ── Login ──
+function doTeacherLogin() {
+  const pw = document.getElementById('loginPw').value;
+  if(pw === 'teacher123') { // Simple password for now
+    sessionStorage.setItem('teacherLoggedIn', 'true');
+    document.getElementById('viewLogin').style.display = 'none';
+    initDashboard();
+  } else {
+    document.getElementById('loginError').textContent = '密碼錯誤';
+  }
+}
 
-const MOCK_SCORES = [
-  { timestamp:'2026-09-06 09:30:00', student_id:'101', student_name:'王小明', question_id:'Q001', score:5, total:5, detail:'[true,true,true,true,true]' },
-  { timestamp:'2026-09-06 09:35:00', student_id:'102', student_name:'李小花', question_id:'Q001', score:3, total:5, detail:'[true,false,true,false,true]' },
-];
+function logout() {
+  sessionStorage.removeItem('teacherLoggedIn');
+  location.reload();
+}
 
-// ============================================================
-//  初始化
-// ============================================================
-(function init() {
-  document.getElementById('teacherPw').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doTeacherLogin();
-  });
+// ── Navigation ──
+function switchSection(secId, btnEl) {
+  document.querySelectorAll('.t-section').forEach(el => el.classList.remove('active'));
+  document.getElementById(secId).classList.add('active');
+  
+  document.querySelectorAll('.t-nav-btn').forEach(el => el.classList.remove('active'));
+  btnEl.classList.add('active');
 
-  // 拖放上傳
-  const ua = document.getElementById('uploadArea');
-  if (ua) {
-    ua.addEventListener('dragover', e => { e.preventDefault(); ua.classList.add('drag-over'); });
-    ua.addEventListener('dragleave', () => ua.classList.remove('drag-over'));
-    ua.addEventListener('drop', e => {
-      e.preventDefault(); ua.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) processImageFile(file);
+  if(secId === 'secQuestions') loadQuestions();
+  if(secId === 'secScores') loadScores();
+  if(secId === 'secLeaderboard') {
+    // Populate dropdown
+    const lbDrop = document.getElementById('lbFilterQid');
+    lbDrop.innerHTML = '<option value="">請選擇題目...</option>';
+    allQuestions.forEach(q => {
+      lbDrop.innerHTML += `<option value="${q.question_id}">${q.question_id} - ${q.title}</option>`;
     });
   }
-})();
+}
 
-// ============================================================
-//  登入 / 登出
-// ============================================================
-function doTeacherLogin() {
-  const pw = document.getElementById('teacherPw').value;
-  if (pw === TEACHER_PASSWORD) {
-    document.getElementById('loginOverlay').style.display = 'none';
-    document.getElementById('mainLayout').classList.remove('hidden');
-    document.getElementById('mainLayout').style.display = 'flex';
-    loadQuestions();
-  } else {
-    const el = document.getElementById('loginError');
-    el.style.display = 'block';
-    el.textContent   = '密碼錯誤，請再試一次';
+function switchMode(modeId, btnEl) {
+  document.querySelectorAll('.mode-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById(modeId).classList.add('active');
+  
+  document.querySelectorAll('.mode-tab').forEach(el => el.classList.remove('active'));
+  btnEl.classList.add('active');
+  
+  if(modeId === 'modeJson') {
+    document.getElementById('jsonEditor').value = JSON.stringify(exportBuilderToJson(), null, 2);
+  }
+  if(modeId === 'modeVisual') {
+    try {
+      const data = JSON.parse(document.getElementById('jsonEditor').value);
+      importJsonToBuilder(data);
+    } catch(e) {}
   }
 }
 
-function doLogout() {
-  document.getElementById('mainLayout').style.display = 'none';
-  document.getElementById('loginOverlay').style.display = 'flex';
-  document.getElementById('teacherPw').value = '';
+async function initDashboard() {
+  loadQuestions();
 }
 
-// ============================================================
-//  導覽
-// ============================================================
-function showSection(name) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.t-nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`section-${name}`).classList.add('active');
-  document.getElementById(`nav-${name}`).classList.add('active');
-  if (name === 'scores') loadScores();
-}
-
-// ============================================================
-//  題目管理
-// ============================================================
+// ── 題庫管理 (Questions) ──
 async function loadQuestions() {
   try {
-    if (!APPS_SCRIPT_URL) {
-      allQuestions = MOCK_QUESTIONS_TEACHER.map(q => ({
-        question_id: q.question_id,
-        title: q.title,
-        node_count: q.data.nodes.length,
-        is_active: q.is_active,
-        created_at: q.created_at,
-      }));
-    } else {
-      const res  = await fetch(`${APPS_SCRIPT_URL}?action=getAllQuestions`);
-      const data = await res.json();
-      if (!data.ok) { showToast('載入題目失敗'); return; }
-      allQuestions = data.questions;
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=getQuestions`);
+    const json = await res.json();
+    if(json.ok) {
+      allQuestions = json.questions;
+      renderQuestionTable();
     }
-  } catch (e) {
-    showToast('連線失敗'); return;
+  } catch(e) {
+    console.error(e);
   }
-
-  renderQuestionTable();
-  // 更新成績篩選下拉
-  const sel = document.getElementById('scoreFilterQ');
-  sel.innerHTML = '<option value="">全部題目</option>';
-  allQuestions.forEach(q => {
-    const opt = document.createElement('option');
-    opt.value       = q.question_id;
-    opt.textContent = `${q.question_id} — ${q.title}`;
-    sel.appendChild(opt);
-  });
 }
 
 function renderQuestionTable() {
-  const loading = document.getElementById('questionListLoading');
-  const empty   = document.getElementById('questionListEmpty');
-  const table   = document.getElementById('questionTable');
-  const tbody   = document.getElementById('questionTableBody');
-
-  loading.style.display = 'none';
-
-  if (allQuestions.length === 0) {
-    empty.style.display = 'block';
-    table.style.display = 'none';
-    return;
-  }
-
-  empty.style.display = 'none';
-  table.style.display = 'table';
+  const tbody = document.getElementById('questionTbody');
   tbody.innerHTML = '';
-
   allQuestions.forEach(q => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="badge badge-gray">${q.question_id}</span></td>
-      <td style="font-weight:600;">${q.title}</td>
-      <td style="text-align:center;">${q.node_count || '—'}</td>
+      <td>${q.question_id}</td>
+      <td>${q.title}</td>
       <td>
-        <label class="toggle">
-          <input type="checkbox" ${q.is_active ? 'checked' : ''} onchange="toggleActive('${q.question_id}', this.checked)" />
-          <span class="toggle-slider"></span>
+        <label class="switch">
+          <input type="checkbox" ${q.is_active ? 'checked' : ''} onchange="toggleActive('${q.question_id}', this.checked)">
+          <span class="slider"></span>
         </label>
       </td>
       <td>
-        <button class="btn btn-outline btn-sm" onclick="copyStudentLink('${q.question_id}')">🔗 複製連結</button>
+        <button class="tool-btn" style="background:#eef2ff;color:#4f46e5;" onclick="copyLink('${q.question_id}')">🔗 複製學生連結</button>
       </td>
       <td>
-        <button class="btn btn-ghost btn-sm" onclick="editQuestion('${q.question_id}')" style="margin-right:4px;">✏️ 編輯</button>
-        <button class="btn btn-sm" onclick="deleteQuestion('${q.question_id}')" style="background:#fee2e2;color:#991b1b;">🗑️</button>
+        <button class="tool-btn" style="background:#f3f4f6;color:#374151;display:inline-flex;" onclick="editQuestion('${q.question_id}')">✏️ 編輯</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-async function toggleActive(questionId, active) {
-  try {
-    if (!APPS_SCRIPT_URL) {
-      const q = MOCK_QUESTIONS_TEACHER.find(q => q.question_id === questionId);
-      if (q) q.is_active = active;
-    } else {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'toggleActive', questionId, active })
-      });
-    }
-    showToast(active ? `✅ ${questionId} 已開放` : `🔒 ${questionId} 已關閉`);
-  } catch (e) { showToast('更新失敗'); }
-}
-
-function copyStudentLink(questionId) {
-  const base = window.location.href.replace('teacher.html','index.html');
-  const url  = `${base}?q=${questionId}`;
-  navigator.clipboard.writeText(url).then(() => showToast('✅ 連結已複製！'));
-}
-
-async function deleteQuestion(questionId) {
-  if (!confirm(`確定要刪除 ${questionId}？此操作無法復原。`)) return;
-  try {
-    if (!APPS_SCRIPT_URL) {
-      const idx = MOCK_QUESTIONS_TEACHER.findIndex(q => q.question_id === questionId);
-      if (idx !== -1) MOCK_QUESTIONS_TEACHER.splice(idx, 1);
-    } else {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'deleteQuestion', questionId })
-      });
-    }
-    showToast('🗑️ 已刪除');
-    loadQuestions();
-  } catch (e) { showToast('刪除失敗'); }
-}
-
-function editQuestion(questionId) {
-  const q = MOCK_QUESTIONS_TEACHER.find(q => q.question_id === questionId);
-  if (!q) return;
-  showSection('addQuestion');
-  document.getElementById('newTitle').value = q.title;
-  switchMode('json');
-  document.getElementById('jsonEditor').value = JSON.stringify(q.data, null, 2);
-}
-
-// ============================================================
-//  新增題目 — 模式切換
-// ============================================================
-function switchMode(mode) {
-  document.querySelectorAll('.mode-tab').forEach((t, i) => {
-    t.classList.toggle('active', ['image','builder','json'][i] === mode);
+async function toggleActive(qid, active) {
+  await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'toggleActive', questionId: qid, active: active })
   });
-  document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(`mode-${mode}`).classList.add('active');
 }
 
-// ============================================================
-//  Mode A: 圖片上傳 + AI 辨識
-// ============================================================
-function handleImageSelect(event) {
-  const file = event.target.files[0];
-  if (file) processImageFile(file);
+function copyLink(qid) {
+  // Use current origin, assume student app is index.html in same folder
+  let url = window.location.href.replace('teacher.html', 'index.html');
+  if(!url.includes('index.html')) url += 'index.html';
+  url += `?q=${qid}`;
+  navigator.clipboard.writeText(url).then(() => alert('學生連結已複製！'));
 }
 
-function processImageFile(file) {
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const dataUrl = e.target.result;
-    document.getElementById('imgPreview').src = dataUrl;
-    document.getElementById('imgPreview').style.display = 'block';
-    document.getElementById('aiResult').style.display   = 'none';
-
-    const base64 = dataUrl.split(',')[1];
-    const mime   = file.type;
-    await analyzeImage(base64, mime);
-  };
-  reader.readAsDataURL(file);
-}
-
-async function analyzeImage(base64, mime) {
-  document.getElementById('aiLoadingMsg').style.display = 'block';
-  document.getElementById('aiResult').style.display     = 'none';
-
-  let result;
-  try {
-    if (!APPS_SCRIPT_URL) {
-      // Mock AI result
-      await new Promise(r => setTimeout(r, 1500));
-      result = {
-        ok: true,
-        data: {
-          title: 'AI 辨識結果（預覽模式）',
-          nodes: [
-            {id:'n1',type:'rect',label:'步驟一'}, {id:'n2',type:'diamond',label:'條件?'},
-            {id:'n3',type:'rect',label:'步驟二'}, {id:'n4',type:'rect',label:'步驟三'},
-          ],
-          connections: [{from:'n1',to:'n2'},{from:'n2',to:'n3',label:'Yes'},{from:'n2',to:'n4',label:'No'}],
-          layout: [{id:'n1',row:0,col:1},{id:'n2',row:1,col:1},{id:'n3',row:2,col:0},{id:'n4',row:2,col:2}],
-        }
-      };
-    } else {
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'analyzeImage', imageBase64: base64, mimeType: mime })
-      });
-      result = await res.json();
+// ── 編輯/新增題目 ──
+function editQuestion(qid) {
+  const q = allQuestions.find(x => x.question_id === qid);
+  if(q) {
+    document.getElementById('eqId').value = q.question_id;
+    document.getElementById('eqTitle').value = q.title;
+    document.getElementById('eqId').readOnly = true; // existing cannot change ID
+    document.getElementById('editorTitle').innerHTML = '✏️ 編輯題目';
+    
+    let timeLimit = 300;
+    if(q.data && q.data.time_limit) timeLimit = q.data.time_limit;
+    document.getElementById('eqTime').value = timeLimit;
+    
+    if(q.data) {
+      importJsonToBuilder(q.data);
+      document.getElementById('jsonEditor').value = JSON.stringify(q.data, null, 2);
     }
-  } catch (e) {
-    result = { ok: false, error: '連線失敗' };
   }
+  switchSection('secAddQuestion', document.querySelectorAll('.t-nav-btn')[1]);
+}
 
-  document.getElementById('aiLoadingMsg').style.display = 'none';
-
-  if (result.ok) {
-    pendingAIData = result.data;
-    // 若有辨識到標題，填入
-    if (result.data.title && !document.getElementById('newTitle').value) {
-      document.getElementById('newTitle').value = result.data.title;
-    }
-
-    // 顯示辨識結果摘要
-    const preview = document.getElementById('aiResultPreview');
-    preview.innerHTML = `
-      <p style="font-size:.85rem;color:#374151;margin-bottom:6px;">
-        辨識到 <strong>${result.data.nodes.length}</strong> 個節點、
-        <strong>${result.data.connections.length}</strong> 條連線
-      </p>
-      <ul style="font-size:.82rem;color:#6b7280;list-style:none;padding:0;">
-        ${result.data.nodes.map(n =>
-          `<li>• ${n.type === 'diamond' ? '◇' : '▭'} ${n.label}</li>`
-        ).join('')}
-      </ul>
-    `;
-    document.getElementById('aiResult').style.display = 'block';
+async function saveQuestion() {
+  const qid = document.getElementById('eqId').value.trim();
+  const title = document.getElementById('eqTitle').value.trim();
+  const timeLimit = parseInt(document.getElementById('eqTime').value) || 300;
+  
+  if(!qid || !title) return alert('請填寫題目 ID 與標題');
+  
+  // Use JSON editor if active, otherwise build from visual
+  let dataObj = {};
+  if(document.getElementById('modeJson').classList.contains('active')) {
+    try {
+      dataObj = JSON.parse(document.getElementById('jsonEditor').value);
+    } catch(e) { return alert('JSON 格式錯誤'); }
   } else {
-    showToast(`AI 辨識失敗：${result.error}`);
+    dataObj = exportBuilderToJson();
   }
-}
+  
+  dataObj.time_limit = timeLimit;
+  dataObj.question_id = qid;
+  dataObj.title = title;
 
-async function saveFromAI() {
-  if (!pendingAIData) return;
-  const title = document.getElementById('newTitle').value.trim() || pendingAIData.title || '未命名題目';
-  await saveQuestion({ title, ...pendingAIData });
-}
-
-// ============================================================
-//  Mode B: 視覺介面建立
-// ============================================================
-function builderAddNode(type) {
-  nodeCounter++;
-  const id    = `n${nodeCounter}`;
-  const label = type === 'rect' ? `步驟${nodeCounter}` : `條件${nodeCounter}?`;
-  const x     = 80 + Math.random() * 200;
-  const y     = 60 + Math.random() * 250;
-  builderNodes.push({ id, type, label, x, y });
-  renderBuilder();
-}
-
-function renderBuilder() {
-  const container = document.getElementById('builderNodes');
-  container.innerHTML = '';
-
-  builderNodes.forEach(node => {
-    const div = document.createElement('div');
-    div.dataset.nodeId = node.id;
-    div.style.left = node.x + 'px';
-    div.style.top  = node.y + 'px';
-    div.style.position = 'absolute';
-
-    if (node.type === 'rect') {
-      div.className = 'builder-node rect';
-      div.textContent = node.label;
+  const payload = {
+    action: 'saveQuestion',
+    data: {
+      question_id: qid,
+      title: title,
+      data: dataObj
+    }
+  };
+  
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, { method:'POST', body:JSON.stringify(payload) });
+    const json = await res.json();
+    if(json.ok) {
+      alert('儲存成功！');
+      loadQuestions();
+      switchSection('secQuestions', document.querySelectorAll('.t-nav-btn')[0]);
     } else {
-      div.className = 'builder-node diamond-wrap';
-      div.innerHTML = `<div class="builder-node diamond-inner"><span>${node.label}</span></div>`;
+      alert('儲存失敗：' + json.error);
     }
-
-    // 刪除按鈕
-    const delBtn = document.createElement('button');
-    delBtn.className = 'del-node';
-    delBtn.textContent = '✕';
-    delBtn.onclick = (e) => { e.stopPropagation(); builderDeleteNode(node.id); };
-    div.appendChild(delBtn);
-
-    // 雙擊編輯
-    div.addEventListener('dblclick', e => {
-      e.stopPropagation();
-      const newLabel = prompt('輸入節點文字：', node.label);
-      if (newLabel !== null) { node.label = newLabel; renderBuilder(); }
-    });
-
-    // 拖曳移動
-    div.addEventListener('mousedown', e => {
-      if (connectMode) { handleConnectClick(node.id); return; }
-      if (e.target.classList.contains('del-node')) return;
-      dragNode   = node;
-      dragOffX   = e.clientX - node.x;
-      dragOffY   = e.clientY - node.y;
-      e.preventDefault();
-    });
-
-    // 點選（連線模式）
-    div.addEventListener('click', e => {
-      if (connectMode) handleConnectClick(node.id);
-    });
-
-    container.appendChild(div);
-  });
-
-  renderBuilderSVG();
-  document.getElementById('builderHint').style.display = builderNodes.length ? 'none' : 'block';
+  } catch(e) { alert('網路錯誤'); }
 }
 
-document.addEventListener('mousemove', e => {
-  if (!dragNode) return;
-  const canvas = document.getElementById('builderCanvas');
-  const rect   = canvas.getBoundingClientRect();
-  dragNode.x   = Math.max(0, Math.min(e.clientX - dragOffX, rect.width  - 140));
-  dragNode.y   = Math.max(0, Math.min(e.clientY - dragOffY, rect.height - 60));
-  renderBuilder();
-});
-document.addEventListener('mouseup', () => { dragNode = null; });
 
-function builderDeleteNode(id) {
-  builderNodes = builderNodes.filter(n => n.id !== id);
-  builderConns = builderConns.filter(c => c.from !== id && c.to !== id);
-  renderBuilder();
-}
+// ── 視覺化編輯器 (Builder) ──
+let bNodes = []; // { id, type, label, el, x, y }
+let bConns = []; // { from, to, label }
+let nodeCounter = 0;
 
-function renderBuilderSVG() {
-  const svg = document.getElementById('builderSvg');
-  // 清除舊連線
-  Array.from(svg.querySelectorAll('line,path,text,rect')).forEach(el => el.remove());
-
-  builderConns.forEach(conn => {
-    const src  = builderNodes.find(n => n.id === conn.from);
-    const dst  = builderNodes.find(n => n.id === conn.to);
-    if (!src || !dst) return;
-
-    const sx = src.x + (src.type === 'rect' ? 60 : 45);
-    const sy = src.y + (src.type === 'rect' ? 44 : 45);
-    const dx = dst.x + (dst.type === 'rect' ? 60 : 45);
-    const dy = dst.y;
-
-    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',sx); line.setAttribute('y1',sy);
-    line.setAttribute('x2',dx); line.setAttribute('y2',dy);
-    line.setAttribute('stroke','#6366f1'); line.setAttribute('stroke-width','2');
-    line.setAttribute('marker-end','url(#barrow)');
-    svg.appendChild(line);
-
-    if (conn.label) {
-      const mx = (sx + dx) / 2, my = (sy + dy) / 2;
-      const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      bg.setAttribute('x',mx-16); bg.setAttribute('y',my-10);
-      bg.setAttribute('width',32); bg.setAttribute('height',14);
-      bg.setAttribute('rx',4); bg.setAttribute('fill','white');
-      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
-      txt.setAttribute('x',mx); txt.setAttribute('y',my+1);
-      txt.setAttribute('text-anchor','middle'); txt.setAttribute('font-size','10');
-      txt.setAttribute('font-weight','700'); txt.setAttribute('fill','#7c3aed');
-      txt.setAttribute('font-family','Segoe UI, sans-serif');
-      txt.textContent = conn.label;
-      svg.appendChild(bg); svg.appendChild(txt);
-    }
-  });
-}
+let isConnecting = false;
+let connectSource = null;
 
 function toggleConnectMode() {
-  connectMode = !connectMode;
-  connectFrom = null;
-  const btn = document.getElementById('connectBtn');
-  btn.style.background = connectMode ? '#4f46e5' : '#fef3c7';
-  btn.style.color      = connectMode ? 'white'    : '#92400e';
-  btn.textContent = connectMode ? '✅ 連線模式（點選節點）' : '🔗 連線模式';
-  document.getElementById('connLabel').style.display = 'none';
-}
-
-function handleConnectClick(nodeId) {
-  if (!connectFrom) {
-    connectFrom = nodeId;
-    showToast('請點選目標節點');
-  } else if (connectFrom !== nodeId) {
-    // 顯示標籤輸入
-    document.getElementById('connLabel').style.display = 'block';
-    document.getElementById('connLabelInput').value = '';
-    window._pendingConn = { from: connectFrom, to: nodeId };
-    connectFrom = null;
+  isConnecting = !isConnecting;
+  const btn = document.getElementById('btnConnect');
+  if(isConnecting) {
+    btn.classList.add('active');
+    document.getElementById('builderWrap').style.cursor = 'crosshair';
+  } else {
+    btn.classList.remove('active');
+    document.getElementById('builderWrap').style.cursor = 'default';
+    connectSource = null;
+    clearConnectingStyles();
   }
 }
 
-function confirmConnect() {
-  if (!window._pendingConn) return;
-  const label = document.getElementById('connLabelInput').value.trim();
-  builderConns.push({ ...window._pendingConn, label });
-  window._pendingConn = null;
-  document.getElementById('connLabel').style.display = 'none';
-  toggleConnectMode();
-  renderBuilderSVG();
+function clearCanvas() {
+  document.getElementById('canvasNodes').innerHTML = '';
+  document.getElementById('canvasLines').innerHTML = '';
+  bNodes = [];
+  bConns = [];
 }
 
-function cancelConnect() {
-  window._pendingConn = null;
-  document.getElementById('connLabel').style.display = 'none';
-  if (connectMode) toggleConnectMode();
-}
-
-function builderClear() {
-  if (!confirm('確定要清除所有節點和連線嗎？')) return;
-  builderNodes = []; builderConns = []; nodeCounter = 0;
-  renderBuilder();
-}
-
-async function saveFromBuilder() {
-  if (builderNodes.length === 0) { showToast('請先新增節點'); return; }
-  const title = document.getElementById('newTitle').value.trim() || '未命名題目';
-
-  // 根據節點位置自動計算 layout（以 y 為 row，x 為 col）
-  const sortedByY = [...builderNodes].sort((a,b) => a.y - b.y);
-  const rowH = 80; // 相近 y 值算同一 row
-  let currentRow = -1, lastY = -9999;
-  const rowMap = {};
-  sortedByY.forEach(n => {
-    if (n.y - lastY > rowH) { currentRow++; lastY = n.y; }
-    rowMap[n.id] = currentRow;
-  });
-
-  const colMap = {};
-  const byRow = {};
-  sortedByY.forEach(n => {
-    const r = rowMap[n.id];
-    if (!byRow[r]) byRow[r] = [];
-    byRow[r].push(n);
-  });
-  Object.values(byRow).forEach(rowNodes => {
-    rowNodes.sort((a,b) => a.x - b.x);
-    rowNodes.forEach((n,i) => colMap[n.id] = i);
-  });
-
-  const data = {
-    nodes:       builderNodes.map(n => ({ id:n.id, type:n.type, label:n.label })),
-    connections: builderConns.map(c => ({ from:c.from, to:c.to, label:c.label||'' })),
-    layout:      builderNodes.map(n => ({ id:n.id, row:rowMap[n.id], col:colMap[n.id] })),
-  };
-
-  await saveQuestion({ title, ...data });
-}
-
-// ============================================================
-//  Mode C: JSON 編輯
-// ============================================================
-function validateJSON() {
-  const errEl = document.getElementById('jsonError');
-  const okEl  = document.getElementById('jsonOk');
-  errEl.style.display = 'none'; okEl.style.display = 'none';
-  try {
-    const data = JSON.parse(document.getElementById('jsonEditor').value);
-    if (!data.nodes || !data.connections || !data.layout) throw new Error('缺少必要欄位（nodes/connections/layout）');
-    okEl.style.display = 'block';
-  } catch (e) {
-    errEl.textContent   = `❌ 格式錯誤：${e.message}`;
-    errEl.style.display = 'block';
+function addNode(type, x=100, y=50, label='文字', id=null) {
+  if(!id) {
+    nodeCounter++;
+    id = 'n' + nodeCounter;
   }
-}
-
-async function saveFromJSON() {
-  const errEl = document.getElementById('jsonError');
-  errEl.style.display = 'none';
-  let data;
-  try {
-    data = JSON.parse(document.getElementById('jsonEditor').value);
-  } catch (e) {
-    errEl.textContent = '❌ JSON 格式錯誤：' + e.message;
-    errEl.style.display = 'block'; return;
+  
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  
+  let shapeHtml = '';
+  if (type === 'oval') {
+    shapeHtml = `<div class="node-shape ns-o"><input type="text" class="node-input" style="color:#3730a3;" value="${label}"></div>`;
+  } else if (type === 'rect') {
+    shapeHtml = `<div class="node-shape ns-r"><input type="text" class="node-input" style="color:#0c4a6e;" value="${label}"></div>`;
+  } else if (type === 'parallelogram') {
+    shapeHtml = `<div class="node-shape ns-p"><div class="ns-p-bg"></div><input type="text" class="node-input" style="color:#78350f;" value="${label}"></div>`;
+  } else if (type === 'diamond') {
+    shapeHtml = `
+      <div class="node-shape ns-d">
+        <svg viewBox="0 0 160 66" preserveAspectRatio="none"><polygon points="80,2 158,33 80,64 2,33" fill="#fdf2f8" stroke="#ec4899" stroke-width="2.5"/></svg>
+        <input type="text" class="node-input" style="color:#831843;" value="${label}">
+      </div>`;
   }
-  const title = document.getElementById('newTitle').value.trim() || '未命名題目';
-  await saveQuestion({ title, ...data });
+
+  el.innerHTML = `
+    <div class="node-del" onclick="deleteNode('${id}')">×</div>
+    ${shapeHtml}
+    <div class="node-id">${id}</div>
+  `;
+  
+  el.onmousedown = (e) => handleNodeMouseDown(e, id);
+  
+  document.getElementById('canvasNodes').appendChild(el);
+  
+  bNodes.push({ id, type, el, x, y });
 }
 
-// ============================================================
-//  儲存題目（共用）
-// ============================================================
-async function saveQuestion(data) {
-  try {
-    if (!APPS_SCRIPT_URL) {
-      const id = `Q${String(MOCK_QUESTIONS_TEACHER.length + 1).padStart(3,'0')}`;
-      MOCK_QUESTIONS_TEACHER.push({
-        question_id: id,
-        title: data.title,
-        node_count: data.nodes.length,
-        is_active: true,
-        created_at: new Date().toISOString().slice(0,10),
-        data,
-      });
-      showToast(`✅ 題目已儲存（${id}）`);
+function deleteNode(id) {
+  const nIdx = bNodes.findIndex(n => n.id === id);
+  if(nIdx > -1) {
+    bNodes[nIdx].el.remove();
+    bNodes.splice(nIdx, 1);
+  }
+  bConns = bConns.filter(c => c.from !== id && c.to !== id);
+  renderLines();
+}
+
+// Drag & Connect Logic
+let isDragging = false;
+let dragNode = null;
+let dragOffX = 0, dragOffY = 0;
+
+function handleNodeMouseDown(e, id) {
+  if (e.target.tagName.toLowerCase() === 'input' || e.target.className === 'node-del') return;
+  
+  const node = bNodes.find(n => n.id === id);
+  if (!node) return;
+
+  if (isConnecting) {
+    if (!connectSource) {
+      connectSource = node;
+      node.el.classList.add('connecting');
     } else {
-      const res  = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveQuestion', data })
-      });
-      const result = await res.json();
-      if (!result.ok) { showToast(`儲存失敗：${result.error}`); return; }
-      showToast(`✅ 題目已儲存（${result.question_id}）`);
+      if (connectSource.id !== node.id) {
+        // Create connection
+        let lbl = '';
+        if(connectSource.type === 'diamond') lbl = prompt('請輸入分支標籤 (例如: Yes / No) \n(非菱形請直接按確定留空)', '');
+        bConns.push({ from: connectSource.id, to: node.id, label: lbl||'' });
+        renderLines();
+      }
+      clearConnectingStyles();
+      connectSource = null;
     }
-    // 重置表單
-    document.getElementById('newTitle').value = '';
-    document.getElementById('jsonEditor').value = '';
-    builderNodes = []; builderConns = []; nodeCounter = 0;
-    renderBuilder();
-    await loadQuestions();
-    showSection('questions');
-  } catch (e) {
-    showToast('儲存失敗，請檢查連線');
-  }
-}
-
-// ============================================================
-//  成績查看
-// ============================================================
-async function loadScores() {
-  const qFilter = document.getElementById('scoreFilterQ').value;
-  const sFilter = document.getElementById('scoreFilterS').value.trim();
-
-  document.getElementById('scoreLoading').style.display = 'block';
-  document.getElementById('scoreEmpty').style.display   = 'none';
-  document.getElementById('scoreTable').style.display   = 'none';
-
-  let scores;
-  try {
-    if (!APPS_SCRIPT_URL) {
-      scores = MOCK_SCORES.filter(s =>
-        (!qFilter || s.question_id === qFilter) &&
-        (!sFilter || String(s.student_id) === sFilter)
-      );
-    } else {
-      let url = `${APPS_SCRIPT_URL}?action=getScores`;
-      if (qFilter) url += `&questionId=${encodeURIComponent(qFilter)}`;
-      if (sFilter) url += `&studentId=${encodeURIComponent(sFilter)}`;
-      const res  = await fetch(url);
-      const data = await res.json();
-      if (!data.ok) { showToast('載入成績失敗'); return; }
-      scores = data.scores;
-    }
-  } catch (e) {
-    showToast('連線失敗'); return;
-  }
-
-  document.getElementById('scoreLoading').style.display = 'none';
-
-  if (scores.length === 0) {
-    document.getElementById('scoreEmpty').style.display = 'block';
     return;
   }
 
-  const table = document.getElementById('scoreTable');
-  const tbody = document.getElementById('scoreTableBody');
-  table.style.display = 'table';
-  tbody.innerHTML = '';
+  // Normal Drag
+  isDragging = true;
+  dragNode = node;
+  const wrapRect = document.getElementById('builderWrap').getBoundingClientRect();
+  const nodeRect = node.el.getBoundingClientRect();
+  dragOffX = e.clientX - nodeRect.left;
+  dragOffY = e.clientY - nodeRect.top;
+}
 
-  scores.forEach(s => {
-    let detail = '';
+document.addEventListener('mousemove', e => {
+  if (!isDragging || !dragNode) return;
+  const wrapRect = document.getElementById('builderWrap').getBoundingClientRect();
+  let nx = e.clientX - wrapRect.left - dragOffX;
+  let ny = e.clientY - wrapRect.top - dragOffY;
+  
+  // 磁吸對齊：自動與其他積木的「中心點」對齊
+  const myWidth = dragNode.el.offsetWidth;
+  const myCenterX = nx + myWidth / 2;
+  
+  for (let n of bNodes) {
+    if (n.id !== dragNode.id) {
+      const otherWidth = n.el.offsetWidth;
+      const otherCenterX = n.x + otherWidth / 2;
+      // 如果中心點距離小於 15px，自動吸附
+      if (Math.abs(myCenterX - otherCenterX) < 15) {
+        nx = otherCenterX - myWidth / 2;
+        break; // 吸附到第一個找到的積木
+      }
+    }
+  }
+  
+  dragNode.x = nx; dragNode.y = ny;
+  dragNode.el.style.left = nx + 'px';
+  dragNode.el.style.top = ny + 'px';
+  renderLines(); // update arrows
+});
+
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+  dragNode = null;
+});
+
+function clearConnectingStyles() {
+  bNodes.forEach(n => n.el.classList.remove('connecting'));
+}
+
+function renderLines() {
+  const svg = document.getElementById('canvasLines');
+  svg.innerHTML = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa" />
+      </marker>
+    </defs>
+  `;
+  
+  const canvasRect = document.getElementById('builderWrap').getBoundingClientRect();
+  
+  bConns.forEach(c => {
+    const src = bNodes.find(n => n.id === c.from);
+    const dst = bNodes.find(n => n.id === c.to);
+    if(!src || !dst) return;
+    
+    // 取得實際形狀的 DOM，不要算到外框或標籤
+    const srcShape = src.el.querySelector('.node-shape');
+    const dstShape = dst.el.querySelector('.node-shape');
+    if(!srcShape || !dstShape) return;
+    
+    const sR = srcShape.getBoundingClientRect();
+    const dR = dstShape.getBoundingClientRect();
+    
+    // 計算相對於畫布的座標
+    let x1 = (sR.left - canvasRect.left) + (sR.width / 2);
+    let y1 = (sR.bottom - canvasRect.top);
+    
+    let x2 = (dR.left - canvasRect.left) + (dR.width / 2);
+    let y2 = (dR.top - canvasRect.top);
+    
+    let pathD = '';
+    
+    if (y2 < y1) {
+      // 迴圈往回指：從起點右側拉出，往上走，再連到終點右側
+      const startX = sR.right - canvasRect.left;
+      const startY = (sR.top - canvasRect.top) + (sR.height / 2);
+      const endX = dR.right - canvasRect.left;
+      const endY = (dR.top - canvasRect.top) + (dR.height / 2);
+      const outX = Math.max(startX, endX) + 40; // 往右拉出 40px
+      
+      pathD = `M ${startX} ${startY} L ${outX} ${startY} L ${outX} ${endY} L ${endX} ${endY}`;
+      x1 = startX; x2 = endX; y1 = startY; y2 = endY; // 為了文字定位
+    }
+    else if (src.type === 'diamond') {
+      // 菱形從左右兩側出發
+      if (x2 > x1) {
+        // 目標在右邊，從右端點出發
+        x1 = (sR.right - canvasRect.left);
+        y1 = (sR.top - canvasRect.top) + (sR.height / 2);
+      } else {
+        // 目標在左/正下方，從左端點出發
+        x1 = (sR.left - canvasRect.left);
+        y1 = (sR.top - canvasRect.top) + (sR.height / 2);
+      }
+      // 畫 90 度折線：先水平走到 x2，再垂直往下走到 y2
+      pathD = `M ${x1} ${y1} L ${x2} ${y1} L ${x2} ${y2}`;
+    } else {
+      // 其他形狀從正下方出發
+      if (Math.abs(x1 - x2) > 10) {
+        // 如果有左右偏移，畫 S 型折線
+        const midY = (y1 + y2) / 2;
+        pathD = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+      } else {
+        // 垂直對齊，畫直線
+        pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+      }
+    }
+    
+    svg.innerHTML += `<path d="${pathD}" fill="none" stroke="#a78bfa" stroke-width="3" marker-end="url(#arrow)" pointer-events="auto" style="cursor:pointer;" onclick="editConnectionLabel('${c.from}', '${c.to}')" />`;
+    
+    if(c.label) {
+      let mx, my;
+      if (y2 < y1) {
+        mx = Math.max(x1, x2) + 40;
+        my = (y1 + y2) / 2;
+      } else if (src.type === 'diamond') {
+        mx = (x1 + x2) / 2;
+        my = y1;
+      } else {
+        mx = (x1 + x2) / 2;
+        my = (y1 + y2) / 2;
+      }
+      
+      // 幫文字加上白色半透明底色，並使其可點擊
+      svg.innerHTML += `
+        <g pointer-events="auto" style="cursor:pointer;" onclick="editConnectionLabel('${c.from}', '${c.to}')">
+          <rect x="${mx-20}" y="${my-10}" width="40" height="20" fill="rgba(255,255,255,0.9)" rx="4"/>
+          <text x="${mx}" y="${my+4}" fill="#6366f1" font-size="12" font-weight="900" text-anchor="middle">${c.label}</text>
+        </g>
+      `;
+    }
+  });
+}
+
+window.editConnectionLabel = function(from, to) {
+  const conn = bConns.find(c => c.from === from && c.to === to);
+  if(conn) {
+    const newLbl = prompt('編輯連線上的文字 (留空白代表清除)：', conn.label);
+    if(newLbl !== null) {
+      conn.label = newLbl;
+      renderLines();
+    }
+  }
+};
+
+// Import / Export JSON
+function exportBuilderToJson() {
+  // Extract inputs
+  const exportNodes = bNodes.map(n => {
+    const input = n.el.querySelector('input');
+    return { id: n.id, type: n.type, label: input ? input.value : '' };
+  });
+  
+  // Sort by Y to generate layout row
+  let sorted = [...bNodes].sort((a,b) => a.y - b.y);
+  let layout = sorted.map((n, i) => ({ id: n.id, row: i, col: 1 }));
+  
+  return {
+    nodes: exportNodes,
+    connections: bConns,
+    layout: layout
+  };
+}
+
+function importJsonToBuilder(data) {
+  clearCanvas();
+  if(!data.nodes) return;
+  
+  // Fake X/Y coordinates based on layout
+  let currentY = 20;
+  data.nodes.forEach(n => {
+    addNode(n.type, 200, currentY, n.label, n.id);
+    currentY += 100;
+  });
+  
+  // Update nodeCounter to avoid ID collision
+  let maxId = 0;
+  data.nodes.forEach(n => {
+    if(n.id.startsWith('n')) {
+      const num = parseInt(n.id.replace('n',''));
+      if(!isNaN(num) && num > maxId) maxId = num;
+    }
+  });
+  nodeCounter = maxId;
+  
+  if(data.connections) {
+    bConns = [...data.connections];
+  }
+  
+  setTimeout(renderLines, 100);
+}
+
+// ── AI Image ──
+async function uploadAiImage() {
+  const fileInput = document.getElementById('aiImage');
+  const status = document.getElementById('aiStatus');
+  if(!fileInput.files[0]) return alert('請先選擇圖片檔案');
+  
+  status.textContent = '處理中，這可能需要幾十秒，請稍候...';
+  
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const base64 = e.target.result.split(',')[1];
     try {
-      const arr = JSON.parse(s.detail);
-      detail = arr.map(v => v ? '✅' : '❌').join(' ');
-    } catch(e) { detail = s.detail; }
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'analyzeImage', imageBase64: base64, mimeType: fileInput.files[0].type })
+      });
+      const json = await res.json();
+      if(json.ok && json.data) {
+        status.textContent = '解析成功！請切換至「視覺化編輯器」或「JSON 編輯」查看結果並微調。';
+        importJsonToBuilder(json.data);
+        document.getElementById('jsonEditor').value = JSON.stringify(json.data, null, 2);
+      } else {
+        status.textContent = '解析失敗：' + (json.error || '未回傳資料');
+      }
+    } catch(err) {
+      status.textContent = '網路錯誤';
+    }
+  };
+  reader.readAsDataURL(fileInput.files[0]);
+}
 
-    const pct   = Math.round(s.score / s.total * 100);
-    const color = pct >= 80 ? '#059669' : pct >= 60 ? '#d97706' : '#dc2626';
+// ── 總成績 (Scores) ──
+async function loadScores() {
+  try {
+    // 取得所有成績 (不帶 questionId)
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=getScores`);
+    const json = await res.json();
+    if(json.ok) {
+      allScores = json.scores;
+      
+      // 更新班級下拉選單 (蒐集所有不重複的班級)
+      const classes = [...new Set(allScores.map(s => s.student_class).filter(c => c))].sort();
+      
+      // 處理成績頁的班級選單
+      const sfClass = document.getElementById('scoreFilterClass');
+      const curSfClass = sfClass.value;
+      sfClass.innerHTML = '<option value="">所有班級</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
+      sfClass.value = curSfClass;
+      
+      // 處理排行榜的班級選單
+      const lbClass = document.getElementById('lbFilterClass');
+      const curLbClass = lbClass.value;
+      lbClass.innerHTML = '<option value="">所有班級</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
+      lbClass.value = curLbClass;
+
+      renderScores();
+    }
+  } catch(e) {}
+}
+
+function renderScores() {
+  const qid = document.getElementById('scoreFilterQid').value;
+  const cls = document.getElementById('scoreFilterClass').value;
+  
+  let filtered = allScores;
+  if (qid) filtered = filtered.filter(s => s.question_id === qid);
+  if (cls) filtered = filtered.filter(s => s.student_class === cls);
+
+  const tbody = document.getElementById('scoreTbody');
+  tbody.innerHTML = '';
+  
+  if(filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8">尚無符合條件的成績資料</td></tr>';
+    return;
+  }
+  
+  filtered.forEach(s => {
+    let detail = s.detail || {};
+    
+    let timeStr = '-';
+    if(detail.time_seconds) {
+      const m = String(Math.floor(detail.time_seconds/60)).padStart(2,'0');
+      const sec = String(detail.time_seconds%60).padStart(2,'0');
+      timeStr = `${m}:${sec}`;
+    }
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="font-size:.8rem;color:#9ca3af;">${s.timestamp}</td>
+      <td>${s.timestamp}</td>
+      <td>${s.student_class || ''}</td>
       <td>${s.student_id}</td>
-      <td style="font-weight:600;">${s.student_name}</td>
-      <td><span class="badge badge-gray">${s.question_id}</span></td>
-      <td><strong style="color:${color};">${s.score}/${s.total}</strong> <span style="font-size:.75rem;color:#9ca3af;">(${pct}%)</span></td>
-      <td style="font-size:.9rem;letter-spacing:2px;">${detail}</td>
+      <td>${s.student_name || ''}</td>
+      <td>${s.question_id}</td>
+      <td style="color:${s.score===100?'#10b981':'#1f2937'}; font-weight:bold;">${s.score}</td>
+      <td>${detail.correct||0} / ${detail.total||0}</td>
+      <td>${timeStr}</td>
     `;
     tbody.appendChild(tr);
   });
-
-  window._currentScores = scores;
 }
 
-function exportCSV() {
-  const scores = window._currentScores;
-  if (!scores || scores.length === 0) { showToast('沒有可匯出的資料'); return; }
-  const header = '時間,座號,姓名,題目,得分,總分,明細';
-  const rows   = scores.map(s =>
-    `"${s.timestamp}","${s.student_id}","${s.student_name}","${s.question_id}",${s.score},${s.total},"${s.detail}"`
-  );
-  const csv = '\uFEFF' + [header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `scores_${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-  showToast('✅ CSV 已下載');
-}
+window.loadLeaderboard = renderLeaderboard; // map the HTML onchange call
 
-// ============================================================
-//  工具
-// ============================================================
-function showToast(msg, duration = 3000) {
-  const toast = document.getElementById('toast');
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), duration);
+// ── 競賽排行榜 (Leaderboard) ──
+async function renderLeaderboard() {
+  const qid = document.getElementById('lbFilterQid').value;
+  const cls = document.getElementById('lbFilterClass').value;
+  const tbody = document.getElementById('lbTbody');
+  
+  if(!qid) {
+    tbody.innerHTML = '<tr><td colspan="5">請先在上方選擇一個題目來進行競賽</td></tr>';
+    return;
+  }
+  
+  // 如果 allScores 尚未載入，就先載入 (確保資料存在)
+  if (!allScores || allScores.length === 0) {
+    await loadScores();
+  }
+  
+  let filtered = allScores.filter(s => s.question_id === qid && s.score === 100);
+  if (cls) filtered = filtered.filter(s => s.student_class === cls);
+  
+  if(filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5">此範圍內尚無滿分的學生</td></tr>';
+    return;
+  }
+  
+  // 依據花費時間由小到大排序 (時間相同的依據送出時間)
+  filtered.sort((a, b) => {
+    const ta = (a.detail && a.detail.time_seconds) ? a.detail.time_seconds : 9999;
+    const tb = (b.detail && b.detail.time_seconds) ? b.detail.time_seconds : 9999;
+    if(ta !== tb) return ta - tb;
+    return new Date(a.timestamp) - new Date(b.timestamp);
+  });
+  
+  tbody.innerHTML = '';
+  filtered.forEach((s, idx) => {
+    let detail = s.detail || {};
+    let timeStr = '-';
+    if(detail.time_seconds) {
+      const m = String(Math.floor(detail.time_seconds/60)).padStart(2,'0');
+      const sec = String(detail.time_seconds%60).padStart(2,'0');
+      timeStr = `${m}分${sec}秒`;
+    }
+    
+    // 前三名加上獎牌
+    let rank = idx + 1;
+    if(rank === 1) rank = '🥇 1';
+    if(rank === 2) rank = '🥈 2';
+    if(rank === 3) rank = '🥉 3';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:900; color:#db2777; font-size:1.1rem;">${rank}</td>
+      <td>${s.student_class || ''}</td>
+      <td><span style="font-weight:bold;">${s.student_name || ''}</span> (${s.student_id})</td>
+      <td style="font-weight:700; color:#4f46e5;">${timeStr}</td>
+      <td style="font-size:0.85rem; color:#6b7280;">${s.timestamp}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }

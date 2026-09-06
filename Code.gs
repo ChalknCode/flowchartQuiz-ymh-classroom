@@ -57,16 +57,18 @@ function doPost(e) {
 //  學生驗證
 // ============================================================
 function verifyStudent(studentId, password) {
-  const sheet = getSheet('students');
+  const sheet = getSheet('學生驗證資料');
   const data  = sheet.getDataRange().getValues();
-  // 第一行為標題：student_id | password | name | class
+  // 欄位：A=班級[0] | B=座號[1] | C=姓名[2] | D=帳號[3] | E=密碼[4]
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(studentId) &&
-        String(data[i][1]) === String(password)) {
-      return { ok: true, name: data[i][2], class: data[i][3] };
+    // 假設學生用「帳號(D)」或「座號(B)」登入？這裡支援座號登入。
+    // 如果你要他們用「帳號」登入，請把 data[i][1] 改成 data[i][3]
+    if (String(data[i][1]) === String(studentId) &&
+        String(data[i][4]) === String(password)) {
+      return { ok: true, name: data[i][2], class: data[i][0] };
     }
   }
-  return { ok: false, error: '座號或密碼錯誤' };
+  return { ok: false, error: '帳號或密碼錯誤' };
 }
 
 // ============================================================
@@ -75,13 +77,13 @@ function verifyStudent(studentId, password) {
 function getQuestion(questionId) {
   const sheet = getSheet('questions');
   const data  = sheet.getDataRange().getValues();
-  // 標題：question_id | title | data | is_active | created_at
+  // 欄位：A=Question_id[0] | B=title[1] | C=is_active[2] | D=data[3]
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(questionId)) {
-      const isActive = data[i][3];
+      const isActive = data[i][2]; // C欄
       if (!isActive) return { ok: false, error: '此題目尚未開放' };
       let qData;
-      try { qData = JSON.parse(data[i][2]); } catch (e) { return { ok: false, error: '題目資料格式錯誤' }; }
+      try { qData = JSON.parse(data[i][3]); } catch (e) { return { ok: false, error: '題目資料格式錯誤' }; }
       return { ok: true, question: { question_id: data[i][0], title: data[i][1], ...qData } };
     }
   }
@@ -97,8 +99,8 @@ function getAllQuestions() {
     questions.push({
       question_id: data[i][0],
       title:       data[i][1],
-      is_active:   data[i][3],
-      created_at:  data[i][4] ? Utilities.formatDate(new Date(data[i][4]), 'Asia/Taipei', 'yyyy-MM-dd') : ''
+      is_active:   data[i][2], // C欄
+      created_at:  ''
     });
   }
   return { ok: true, questions };
@@ -117,7 +119,8 @@ function saveQuestion(data) {
     connections: data.connections,
     layout:      data.layout
   });
-  sheet.appendRow([newId, data.title, jsonStr, true, new Date()]);
+  // A=id, B=title, C=active, D=data
+  sheet.appendRow([newId, data.title, true, jsonStr]);
   return { ok: true, question_id: newId };
 }
 
@@ -131,8 +134,8 @@ function updateQuestion(data) {
         connections: data.connections,
         layout:      data.layout
       });
-      sheet.getRange(i + 1, 2).setValue(data.title);
-      sheet.getRange(i + 1, 3).setValue(jsonStr);
+      sheet.getRange(i + 1, 2).setValue(data.title); // B欄
+      sheet.getRange(i + 1, 4).setValue(jsonStr);    // D欄
       return { ok: true };
     }
   }
@@ -156,7 +159,7 @@ function toggleActive(questionId, active) {
   const data  = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(questionId)) {
-      sheet.getRange(i + 1, 4).setValue(active);
+      sheet.getRange(i + 1, 3).setValue(active); // C欄
       return { ok: true };
     }
   }
@@ -167,38 +170,56 @@ function toggleActive(questionId, active) {
 //  成績相關
 // ============================================================
 function submitScore(data) {
-  const sheet = getSheet('scores');
+  const sheet = getSheet('分數');
+  // 欄位：A=送出時間[0] | B=學生帳號[1] | C=Question_id[2] | D=分數[3] | E=Details[4]
   sheet.appendRow([
     new Date(),
     data.student_id,
-    data.student_name,
     data.question_id,
     data.score,
-    data.total,
     JSON.stringify(data.detail)
   ]);
   return { ok: true };
 }
 
 function getScores(questionId, studentId) {
-  const sheet = getSheet('scores');
+  const sheet = getSheet('分數');
   const data  = sheet.getDataRange().getValues();
-  // 標題：timestamp | student_id | student_name | question_id | score | total | detail
   let scores = data.slice(1).filter(r => !!r[0]);
-  if (questionId) scores = scores.filter(r => String(r[3]) === String(questionId));
+  
+  if (questionId) scores = scores.filter(r => String(r[2]) === String(questionId));
   if (studentId)  scores = scores.filter(r => String(r[1]) === String(studentId));
-  return {
-    ok: true,
-    scores: scores.map(r => ({
-      timestamp:    Utilities.formatDate(new Date(r[0]), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss'),
-      student_id:   r[1],
-      student_name: r[2],
-      question_id:  r[3],
-      score:        r[4],
-      total:        r[5],
-      detail:       r[6]
-    }))
-  };
+  
+  // 取得學生驗證資料，建立 ID -> 班級, 姓名 的 mapping
+  const studentSheet = getSheet('學生驗證資料');
+  const studentData = studentSheet.getDataRange().getValues();
+  const studentMap = {};
+  for (let i = 1; i < studentData.length; i++) {
+    // A=班級[0], B=座號[1], C=姓名[2]
+    studentMap[String(studentData[i][1])] = {
+      class: studentData[i][0],
+      name: studentData[i][2]
+    };
+  }
+
+  const result = scores.map(r => {
+    const sId = String(r[1]);
+    const info = studentMap[sId] || { class: '未知班級', name: '未知學生' };
+    
+    let detail = {};
+    try { detail = JSON.parse(r[4] || '{}'); } catch(e) {}
+    
+    return {
+      timestamp: Utilities.formatDate(new Date(r[0]), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss'),
+      student_class: info.class,
+      student_id: sId,
+      student_name: info.name,
+      question_id: r[2],
+      score: r[3],
+      detail: detail
+    };
+  });
+  return { ok: true, scores: result };
 }
 
 // ============================================================
@@ -213,28 +234,29 @@ function analyzeImage(imageBase64, mimeType) {
 {
   "title": "流程圖的標題（如果圖中沒有標題，請根據內容猜測）",
   "nodes": [
-    {"id": "n1", "type": "rect", "label": "節點文字"},
-    {"id": "n2", "type": "diamond", "label": "判斷條件文字"},
-    ...
+    {"id": "n1", "type": "oval", "label": "開始"},
+    {"id": "n2", "type": "rect", "label": "處理步驟"},
+    {"id": "n3", "type": "parallelogram", "label": "輸入/輸出"},
+    {"id": "n4", "type": "diamond", "label": "判斷條件"}
   ],
   "connections": [
     {"from": "n1", "to": "n2"},
-    {"from": "n2", "to": "n3", "label": "Yes"},
-    {"from": "n2", "to": "n4", "label": "No"},
-    ...
+    {"from": "n4", "to": "n2", "label": "Yes"},
+    {"from": "n4", "to": "n1", "label": "No"}
   ],
   "layout": [
     {"id": "n1", "row": 0, "col": 1},
-    ...
+    {"id": "n2", "row": 1, "col": 1}
   ]
 }
 規則：
-- 矩形 (rect) 代表一般步驟或動作
-- 菱形 (diamond) 代表判斷或條件
-- 橢圓形/圓角矩形也算 rect
-- connections 的 label 只在分支時填寫（Yes/No 或其他文字）
-- layout 中 col 從 0 開始，讓分支節點在不同欄
-- 只回傳 JSON，不要有其他文字`;
+- 橢圓形/圓角/膠囊形 (oval)：代表開始或結束
+- 矩形 (rect)：代表一般處理、動作或步驟
+- 平行四邊形 (parallelogram)：代表資料輸入或輸出
+- 菱形 (diamond)：代表判斷或條件
+- connections 的 label 只在有分支判斷時填寫（例如 Yes/No）
+- layout 中的 row 代表上下順序 (越上層 row 越小)，這對渲染很重要
+- 只回傳 JSON，不要有其他 markdown 文字，不要包裝在 \`\`\`json 內`;
 
   const payload = {
     contents: [{
@@ -256,15 +278,22 @@ function analyzeImage(imageBase64, mimeType) {
   const response = UrlFetchApp.fetch(url, options);
   const json = JSON.parse(response.getContentText());
 
+  if (json.error) {
+    return { ok: false, error: 'Gemini API 錯誤: ' + json.error.message };
+  }
+
   try {
+    if (!json.candidates || json.candidates.length === 0) {
+      return { ok: false, error: 'AI 沒有回傳結果，可能被安全機制攔截。' };
+    }
     const text = json.candidates[0].content.parts[0].text;
     // 擷取 JSON 部分
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return { ok: false, error: 'AI 無法辨識此圖片' };
+    if (!match) return { ok: false, error: 'AI 無法辨識此圖片為流程圖，或未回傳有效 JSON' };
     const parsed = JSON.parse(match[0]);
     return { ok: true, data: parsed };
   } catch (e) {
-    return { ok: false, error: 'AI 回應解析失敗：' + e.message };
+    return { ok: false, error: 'AI 回應解析失敗：' + e.message + ' (原始回應: ' + JSON.stringify(json).substring(0, 100) + '...)' };
   }
 }
 
@@ -276,16 +305,14 @@ function getSheet(name) {
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
-    // 自動建立標題列
-    if (name === 'students') {
-      sheet.appendRow(['student_id', 'password', 'name', 'class']);
-      // 預設測試帳號
-      sheet.appendRow(['101', '1234', '王小明', '一年甲班']);
-      sheet.appendRow(['102', 'abcd', '李小花', '一年甲班']);
+    // 自動建立標題列 (針對剛建立的空白表)
+    if (name === '學生驗證資料') {
+      sheet.appendRow(['班級', '座號', '姓名', '帳號', '密碼']);
+      sheet.appendRow(['一年甲班', '101', '王小明', 'test1', '1234']);
     } else if (name === 'questions') {
-      sheet.appendRow(['question_id', 'title', 'data', 'is_active', 'created_at']);
-    } else if (name === 'scores') {
-      sheet.appendRow(['timestamp', 'student_id', 'student_name', 'question_id', 'score', 'total', 'detail']);
+      sheet.appendRow(['Question_id', 'title', 'is_active', 'data']);
+    } else if (name === '分數') {
+      sheet.appendRow(['送出時間', '學生帳號', 'Question_id', '分數', 'Details']);
     }
   }
   return sheet;

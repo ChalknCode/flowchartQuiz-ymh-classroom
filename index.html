@@ -2,87 +2,113 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>流程圖配對練習</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
-<!-- ── 登入遮罩 ── -->
-<div id="loginOverlay" class="overlay">
-  <div class="modal">
-    <div class="modal-icon">📊</div>
-    <h2 class="modal-title">流程圖配對練習</h2>
-    <p class="modal-desc">請輸入座號與密碼開始作答</p>
-    <div class="form-group">
-      <label class="form-label">座號</label>
-      <input type="text" id="loginId" class="form-input" placeholder="例如：101" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">密碼</label>
-      <input type="password" id="loginPw" class="form-input" placeholder="請輸入密碼" />
-    </div>
-    <button class="btn btn-primary w-full" onclick="doLogin()" id="btnLogin">開始作答</button>
-    <div class="form-error" id="loginError">座號或密碼錯誤，請再試一次</div>
-    <p class="text-sm text-gray mt-4">預覽測試：座號 <strong>101</strong>，密碼 <strong>1234</strong></p>
-  </div>
-</div>
-
-<!-- ── 頂部列 ── -->
-<div class="topbar">
-  <div class="topbar-brand">
-    <span class="icon">📊</span>
-    流程圖配對練習
-  </div>
-  <div class="topbar-right">
-    <span class="badge badge-indigo" id="studentBadge">未登入</span>
-  </div>
-</div>
-
-<!-- ── 主畫面 ── -->
-<div id="mainLayout" class="hidden" style="height:calc(100vh - 56px); display:flex; overflow:hidden;">
-
-  <!-- 左側欄 -->
-  <div id="sidebar" style="width:240px;min-width:240px;background:white;border-right:1px solid #e5e7eb;overflow-y:auto;padding:16px;display:flex;flex-direction:column;">
-    <div style="font-size:.75rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;padding-bottom:8px;border-bottom:2px solid #f3f4f6;">
-      圖形選項
-    </div>
-    <p style="font-size:.78rem;color:#b0b7c3;text-align:center;margin:10px 0;">⬆ 拖曳到右側流程圖</p>
-    <div id="optionList" style="display:flex;flex-direction:column;gap:8px;"></div>
-  </div>
-
-  <!-- 右側流程圖區 -->
-  <div id="flowArea" style="flex:1;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:28px 20px;">
-    <div id="questionTitle" style="font-size:1.2rem;font-weight:700;color:#1e1b4b;margin-bottom:20px;text-align:center;"></div>
-
-    <div id="flowStart" class="flow-start-end hidden">START</div>
-
-    <!-- 流程圖容器 (absolute positioning + SVG) -->
-    <div id="flowWrapper" style="position:relative;margin:0 auto;"></div>
-
-    <div id="flowEnd" class="flow-start-end hidden" style="margin-top:0;">END</div>
-
-    <!-- 操作按鈕區 -->
-    <div style="margin-top:24px;display:flex;flex-direction:column;align-items:center;gap:12px;">
-      <div class="score-banner hidden" id="scoreBanner">
-        <div class="score-num" id="scoreNum"></div>
-        <div class="score-label">答對 / 總題數</div>
+  <!-- =========================================
+       1. LOGIN SCREEN
+  ========================================== -->
+  <div id="viewLogin">
+    <div class="lp-bg" id="lpBg"></div>
+    <div class="lp-blur"></div>
+    <div class="lp-card">
+      <div class="lp-left" id="lpLeft">
+        <div class="lp-txt">
+          <div class="lp-title-en">Flowchart Quiz</div>
+          <div class="lp-title-zh">流程圖<span>配對</span>練習</div>
+        </div>
       </div>
-      <div class="wrong-hints hidden" id="wrongHints"></div>
-      <button class="btn btn-primary" id="btnConfirm" onclick="confirmAnswer()" disabled>
-        ✅ 確認答案
-      </button>
-      <button class="btn btn-success hidden" id="btnSubmit" onclick="submitScore()">
-        📤 提交成績
-      </button>
-      <div class="success-msg hidden" id="successMsg">🎉 成績已送出！感謝作答</div>
+      <div class="lp-right">
+        <div class="lp-form-title">學生登入</div>
+        <div class="lp-form">
+          <input type="text" id="loginId" class="lp-input" placeholder="請輸入座號 (例: 101)" autocomplete="off" />
+          <input type="password" id="loginPw" class="lp-input" placeholder="請輸入密碼" />
+          <div class="lp-error" id="loginError"></div>
+          <button class="lp-btn" id="btnLogin" onclick="doLogin()">開始作答</button>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+  <!-- =========================================
+       2. APP SCREEN
+  ========================================== -->
+  <div id="viewQuiz">
+    <!-- Top bar -->
+    <div class="tb">
+      <div class="tb-brand">📊 流程圖配對練習</div>
+      <div class="tb-sep"></div>
+      <div class="tb-qid" id="tbQid">📋 載入中...</div>
+      <!-- Timer -->
+      <div class="tb-timer" id="tbTimer">⏱ 05:00</div>
+      <!-- Score -->
+      <div class="tb-score">✅ <span id="tbScoreNum">0</span> / <span id="tbScoreTotal">0</span></div>
+      <div class="tb-sep"></div>
+      
+      <button class="btn btn-ok" id="btnConfirm" onclick="confirmAnswer()" disabled>確認答案</button>
+      <button class="btn btn-sub" id="btnSubmit" onclick="submitScore()">📤 提交成績</button>
+      
+      <div class="tb-user" id="tbUser">尚未登入</div>
+    </div>
 
-<script src="js/student.js"></script>
+    <!-- Body Layout -->
+    <div class="body">
+      
+      <!-- ① 題目欄 -->
+      <div class="col-q">
+        <div class="zh"><div class="zh-dot"></div>題目說明</div>
+        <div class="q-body">
+          <div class="q-title" id="qTitle">載入中...</div>
+          <div class="q-desc" id="qDesc"></div>
+          <div class="q-task-hd">提示：</div>
+          <div class="q-hint" style="margin-top:0;">⬅ 從右側積木欄拖曳到中間作答區</div>
+        </div>
+      </div>
+
+      <!-- ② 積木欄 -->
+      <div class="col-b">
+        <div class="zh"><div class="zh-dot"></div>積木</div>
+        <div class="blk-list" id="blockList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- ③ 作答區 -->
+      <div class="col-ans">
+        <div class="zh" style="background:#eae6f8;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:4px;"><div class="zh-dot"></div>作答區</div>
+          <span style="font-size:0.62rem;color:#7c3aed;font-weight:700;letter-spacing:0;">拖曳左側積木至正確格子</span>
+        </div>
+        <div class="flow-area">
+          <div class="flow-col" id="flowCol">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================
+       3. SUBMIT SUCCESS MODAL
+  ========================================== -->
+  <div id="submitModal">
+    <div class="modal-box">
+      <div style="font-size:3.5rem;margin-bottom:10px;">🎉</div>
+      <div style="font-family:'M PLUS Rounded 1c',sans-serif;font-size:1.4rem;font-weight:900;color:#4f46e5;margin-bottom:8px;">成績已送出！</div>
+      <div style="font-size:0.9rem;color:#4b5563;margin-bottom:20px;" id="submitMsg">
+        太棒了，<span id="modName">王小明</span>！<br>
+        你這次花費了 <span style="font-weight:800;color:#059669;" id="modTime">02:15</span>，<br>
+        答對了 <span style="font-weight:800;color:#059669;" id="modScore">2/7</span> 題。
+      </div>
+      <button onclick="location.reload()" style="background:#f3f4f6;color:#374151;border:none;border-radius:12px;padding:10px 24px;font-size:0.85rem;font-weight:700;cursor:pointer;width:100%;">返回首頁</button>
+    </div>
+  </div>
+
+  <!-- Load JS -->
+  <script src="js/student.js"></script>
 </body>
 </html>
