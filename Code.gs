@@ -59,12 +59,12 @@ function doPost(e) {
 function verifyStudent(studentId, password) {
   const sheet = getSheet('學生驗證資料');
   const data  = sheet.getDataRange().getValues();
-  // 欄位：A=班級[0] | B=座號[1] | C=姓名[2] | D=帳號[3] | E=密碼[4]
+  // 欄位：A=帳號[0] | B=班級[1] | C=座號[2] | D=姓名[3] | E=密碼[4]
   for (let i = 1; i < data.length; i++) {
-    // 改為使用「帳號(D)」欄位作為登入帳號 (例如班級座號)
-    if (String(data[i][3]) === String(studentId) &&
+    // 使用「帳號(A)」欄位作為登入帳號
+    if (String(data[i][0]) === String(studentId) &&
         String(data[i][4]) === String(password)) {
-      return { ok: true, name: data[i][2], class: data[i][0] };
+      return { ok: true, name: data[i][3], class: data[i][1] };
     }
   }
   return { ok: false, error: '帳號或密碼錯誤' };
@@ -196,10 +196,10 @@ function getScores(questionId, studentId) {
   const studentData = studentSheet.getDataRange().getValues();
   const studentMap = {};
   for (let i = 1; i < studentData.length; i++) {
-    // A=班級[0], B=座號[1], C=姓名[2]
-    studentMap[String(studentData[i][1])] = {
-      class: studentData[i][0],
-      name: studentData[i][2]
+    // 欄位：A=帳號[0] | B=班級[1] | C=座號[2] | D=姓名[3] | E=密碼[4]
+    studentMap[String(studentData[i][0])] = {
+      class: studentData[i][1],
+      name: studentData[i][3]
     };
   }
 
