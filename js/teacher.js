@@ -576,8 +576,8 @@ function renderScores() {
   const cls = document.getElementById('scoreFilterClass').value;
   
   let filtered = allScores;
-  if (qid) filtered = filtered.filter(s => s.question_id === qid);
-  if (cls) filtered = filtered.filter(s => s.student_class === cls);
+  if (qid) filtered = filtered.filter(s => String(s.question_id) === String(qid));
+  if (cls) filtered = filtered.filter(s => String(s.student_class) === String(cls));
 
   const tbody = document.getElementById('scoreTbody');
   tbody.innerHTML = '';
@@ -630,8 +630,8 @@ async function renderLeaderboard() {
     await loadScores();
   }
   
-  let filtered = allScores.filter(s => s.question_id === qid && s.score === 100);
-  if (cls) filtered = filtered.filter(s => s.student_class === cls);
+  let filtered = allScores.filter(s => String(s.question_id) === String(qid) && Number(s.score) === 100);
+  if (cls) filtered = filtered.filter(s => String(s.student_class) === String(cls));
   
   if(filtered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5">此範圍內尚無滿分的學生</td></tr>';

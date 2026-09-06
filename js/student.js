@@ -184,6 +184,7 @@ async function loadQuestion(qId) {
       document.getElementById('qTitle').textContent = currentQuestion.title || '無標題';
       document.getElementById('tbQid').textContent = '📋 ' + currentQuestion.question_id;
       renderQuiz();
+      startTimer();
     } else {
       alert('載入題目失敗: ' + json.error);
     }
