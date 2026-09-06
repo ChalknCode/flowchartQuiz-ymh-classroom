@@ -467,9 +467,7 @@ function exportBuilderToJson() {
     return { id: n.id, type: n.type, label: input ? input.value : '' };
   });
   
-  // Sort by Y to generate layout row
-  let sorted = [...bNodes].sort((a,b) => a.y - b.y);
-  let layout = sorted.map((n, i) => ({ id: n.id, row: i, col: 1 }));
+  let layout = bNodes.map(n => ({ id: n.id, x: n.x, y: n.y }));
   
   return {
     nodes: exportNodes,
@@ -482,11 +480,18 @@ function importJsonToBuilder(data) {
   clearCanvas();
   if(!data.nodes) return;
   
-  // Fake X/Y coordinates based on layout
-  let currentY = 20;
-  data.nodes.forEach(n => {
-    addNode(n.type, 200, currentY, n.label, n.id);
-    currentY += 100;
+  data.nodes.forEach((n, i) => {
+    // Try to find layout data
+    const lInfo = (data.layout || []).find(l => l.id === n.id);
+    let nx = 200;
+    let ny = 20 + i * 100;
+    if (lInfo) {
+      if (lInfo.x !== undefined) nx = lInfo.x;
+      if (lInfo.y !== undefined) ny = lInfo.y;
+      // Fallback for old row-based layout
+      if (lInfo.row !== undefined && lInfo.y === undefined) ny = 20 + lInfo.row * 100;
+    }
+    addNode(n.type, nx, ny, n.label, n.id);
   });
   
   // Update nodeCounter to avoid ID collision

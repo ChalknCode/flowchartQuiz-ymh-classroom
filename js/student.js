@@ -224,14 +224,19 @@ function renderQuiz() {
     blockList.appendChild(wrap);
   });
   
-  // 2. 建立右側流程圖格子
-  // 簡化: 照 row 排序依序往下畫
-  const layout = [...currentQuestion.layout].sort((a,b) => a.row - b.row);
+  // 2. 建立右側流程圖格子 (使用絕對坐標與 SVG 連線)
+  const layout = currentQuestion.layout;
   const flowCol = document.getElementById('flowCol');
-  flowCol.innerHTML = '';
+  
+  // 清空 flowCol 但保留 svg
+  Array.from(flowCol.children).forEach(c => {
+    if (c.id !== 'canvasLines') flowCol.removeChild(c);
+  });
   
   document.getElementById('tbScoreTotal').textContent = layout.length;
   document.getElementById('tbScoreNum').textContent = '0';
+  
+  // 找出畫布最小 X 和 Y 來做置中偏移 (可選)
   
   layout.forEach((pos, idx) => {
     const nodeDef = currentQuestion.nodes.find(n => n.id === pos.id);
@@ -240,8 +245,10 @@ function renderQuiz() {
     // Drop zone container
     const dzWrap = document.createElement('div');
     dzWrap.className = 'dz-wrap';
-    dzWrap.style.position = 'relative';
-    dzWrap.style.marginBottom = '12px'; // space for arrow
+    dzWrap.style.position = 'absolute';
+    dzWrap.style.left = (pos.x || 200) + 'px';
+    // Fallback for old row logic if y is missing
+    dzWrap.style.top = (pos.y !== undefined ? pos.y : (20 + pos.row * 100)) + 'px';
     
     // Drop zone
     const dz = document.createElement('div');
@@ -258,18 +265,103 @@ function renderQuiz() {
     dz.addEventListener('drop', handleDrop);
     
     dzWrap.appendChild(dz);
-    
-    // 箭頭 (除了最後一個)
-    if (idx < layout.length - 1) {
-      const arr = document.createElement('div');
-      arr.className = 'arr';
-      dzWrap.appendChild(arr);
-    }
-    
     flowCol.appendChild(dzWrap);
   });
+
+  // 繪製 SVG 連線
+  renderLines();
 }
 
+// ── 繪製 SVG 連線 (與教師端相同的邏輯) ──
+function renderLines() {
+  const svg = document.getElementById('canvasLines');
+  if(!svg) return;
+  
+  svg.innerHTML = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa" />
+      </marker>
+    </defs>
+  `;
+  
+  const canvasRect = document.getElementById('flowCol').getBoundingClientRect();
+  const conns = currentQuestion.connections || [];
+  
+  conns.forEach(c => {
+    const srcNode = currentQuestion.nodes.find(n => n.id === c.from);
+    const dstNode = currentQuestion.nodes.find(n => n.id === c.to);
+    if(!srcNode || !dstNode) return;
+    
+    const srcWrap = document.getElementById('dz-' + c.from);
+    const dstWrap = document.getElementById('dz-' + c.to);
+    if(!srcWrap || !dstWrap) return;
+    
+    const sR = srcWrap.getBoundingClientRect();
+    const dR = dstWrap.getBoundingClientRect();
+    
+    let x1 = (sR.left - canvasRect.left) + (sR.width / 2);
+    let y1 = (sR.bottom - canvasRect.top);
+    
+    let x2 = (dR.left - canvasRect.left) + (dR.width / 2);
+    let y2 = (dR.top - canvasRect.top);
+    
+    let pathD = '';
+    
+    if (y2 < y1) {
+      // 迴圈往回指
+      const startX = sR.right - canvasRect.left;
+      const startY = (sR.top - canvasRect.top) + (sR.height / 2);
+      const endX = dR.right - canvasRect.left;
+      const endY = (dR.top - canvasRect.top) + (dR.height / 2);
+      const outX = Math.max(startX, endX) + 40;
+      
+      pathD = \`M \${startX} \${startY} L \${outX} \${startY} L \${outX} \${endY} L \${endX} \${endY}\`;
+      x1 = startX; x2 = endX; y1 = startY; y2 = endY;
+    }
+    else if (srcNode.type === 'diamond') {
+      // 菱形從左右兩側出發
+      if (x2 > x1) {
+        x1 = (sR.right - canvasRect.left);
+        y1 = (sR.top - canvasRect.top) + (sR.height / 2);
+      } else {
+        x1 = (sR.left - canvasRect.left);
+        y1 = (sR.top - canvasRect.top) + (sR.height / 2);
+      }
+      pathD = \`M \${x1} \${y1} L \${x2} \${y1} L \${x2} \${y2}\`;
+    } else {
+      if (Math.abs(x1 - x2) > 10) {
+        const midY = (y1 + y2) / 2;
+        pathD = \`M \${x1} \${y1} L \${x1} \${midY} L \${x2} \${midY} L \${x2} \${y2}\`;
+      } else {
+        pathD = \`M \${x1} \${y1} L \${x2} \${y2}\`;
+      }
+    }
+    
+    svg.innerHTML += \`<path d="\${pathD}" fill="none" stroke="#a78bfa" stroke-width="3" marker-end="url(#arrow)" />\`;
+    
+    if(c.label) {
+      let mx, my;
+      if (y2 < y1) {
+        mx = Math.max(x1, x2) + 40;
+        my = (y1 + y2) / 2;
+      } else if (srcNode.type === 'diamond') {
+        mx = (x1 + x2) / 2;
+        my = y1;
+      } else {
+        mx = (x1 + x2) / 2;
+        my = (y1 + y2) / 2;
+      }
+      
+      svg.innerHTML += \`
+        <g>
+          <rect x="\${mx-20}" y="\${my-10}" width="40" height="20" fill="rgba(255,255,255,0.9)" rx="4"/>
+          <text x="\${mx}" y="\${my+4}" fill="#6366f1" font-size="12" font-weight="900" text-anchor="middle">\${c.label}</text>
+        </g>
+      \`;
+    }
+  });
+}
 // ── 形狀 HTML 產生器 ──
 function getShapeHTML(type, label, isFinishedState) {
   if (type === 'oval') {
