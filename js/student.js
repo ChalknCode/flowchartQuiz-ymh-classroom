@@ -2,7 +2,7 @@
 //  student.js — 學生端邏輯 (更新為 3-Zone Layout + 新版型)
 // ============================================================
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyAunNjzFK6JYtvG5iEFbpJEblQNtyQgEWlXyNiW4h1yEpXJE3kWu5qUA0ZaHzG0HVj/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPt3P5spuVpYpdp1DIOctpW0nH8GhVQSZj6uiifE6p8dZlgPiUqsjRsyAO__rHrsLe/exec';
 
 // ── 狀態 ──
 let currentStudent  = null;
@@ -182,6 +182,15 @@ async function loadQuestion(qId) {
     if (json.ok) {
       currentQuestion = json.question;
       document.getElementById('qTitle').textContent = currentQuestion.title || '無標題';
+      
+      const qDesc = document.getElementById('qDesc');
+      if (currentQuestion.description) {
+        qDesc.style.display = 'block';
+        qDesc.textContent = currentQuestion.description;
+      } else {
+        qDesc.style.display = 'none';
+      }
+      
       document.getElementById('tbQid').textContent = '📋 ' + currentQuestion.question_id;
       renderQuiz();
       startTimer();
@@ -271,6 +280,9 @@ function renderQuiz() {
 
   // 繪製 SVG 連線
   renderLines();
+  
+  // 確保確認按鈕重置為停用
+  checkAllFilled();
 }
 
 // ── 繪製 SVG 連線 (與教師端相同的邏輯) ──
@@ -394,24 +406,10 @@ function getShapeHTML(type, label, isFinishedState) {
 }
 
 function getDropZoneClass(type) {
-  if (type === 'oval') return 'dz-o';
-  if (type === 'rect') return 'dz-r';
-  if (type === 'parallelogram') return 'dz-p';
-  if (type === 'diamond') return 'dz-d';
-  return 'dz-r';
+  return 'dz-generic';
 }
 
 function getDropZoneInnerHTML(type) {
-  if (type === 'parallelogram') {
-    return `<div class="dz-p-bg"></div><span class="dz-p-txt">拖放至此</span>`;
-  } else if (type === 'diamond') {
-    return `
-      <svg viewBox="0 0 166 66">
-        <polygon points="83,3 163,33 83,63 3,33" fill="#fff0f8" stroke="#ec4899" stroke-width="2.5" stroke-dasharray="5,3"/>
-      </svg>
-      <span class="dz-d-txt">拖放至此</span>
-    `;
-  }
   return `拖放至此`;
 }
 
@@ -457,6 +455,7 @@ function handleDrop(e) {
   const expectedType = this.dataset.expectedType;
   
   // 視覺更新：把格子變成 "已填" 狀態
+  this.classList.remove('dz-generic');
   this.classList.add('filled');
   this.innerHTML = getShapeHTML(draggedNodeData.type, draggedNodeData.label, true);
   
@@ -490,6 +489,7 @@ function removeBlock(zoneId, nodeId, expectedType, dzEl) {
   
   // 恢復格子外觀
   dzEl.classList.remove('filled');
+  dzEl.classList.add('dz-generic');
   dzEl.innerHTML = getDropZoneInnerHTML(expectedType);
   // 清除可能殘留的驗證 class
   dzEl.classList.remove('sc', 'sw', 'sf');
@@ -510,6 +510,13 @@ function checkAllFilled() {
   } else {
     btnOk.disabled = true;
   }
+}
+
+function restartQuiz() {
+  if (!confirm('確定要清除所有已填答的積木並重新作答嗎？')) return;
+  // 重新渲染畫面 (這會清空 dropState, 把左邊積木復原, 重置右側格子)
+  renderQuiz();
+  // 不用重置時間，讓時間繼續計算
 }
 
 // ── 確認答案 ──

@@ -117,7 +117,8 @@ function saveQuestion(data) {
     nodes:       data.nodes,
     connections: data.connections,
     layout:      data.layout,
-    time_limit:  data.time_limit || 300
+    time_limit:  data.time_limit || 300,
+    description: data.description || ''
   });
   // A=id, B=title, C=active, D=data
   sheet.appendRow([newId, data.title, true, jsonStr]);
@@ -133,7 +134,8 @@ function updateQuestion(data) {
         nodes:       data.nodes,
         connections: data.connections,
         layout:      data.layout,
-        time_limit:  data.time_limit || 300
+        time_limit:  data.time_limit || 300,
+        description: data.description || ''
       });
       sheet.getRange(i + 1, 2).setValue(data.title); // B欄
       sheet.getRange(i + 1, 4).setValue(jsonStr);    // D欄

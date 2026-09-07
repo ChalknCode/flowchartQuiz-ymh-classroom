@@ -1,4 +1,4 @@
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyAunNjzFK6JYtvG5iEFbpJEblQNtyQgEWlXyNiW4h1yEpXJE3kWu5qUA0ZaHzG0HVj/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPt3P5spuVpYpdp1DIOctpW0nH8GhVQSZj6uiifE6p8dZlgPiUqsjRsyAO__rHrsLe/exec';
 
 // ── State ──
 let allQuestions = [];
@@ -140,6 +140,8 @@ function editQuestion(qid) {
     if(q.data && q.data.time_limit) timeLimit = q.data.time_limit;
     document.getElementById('eqTime').value = timeLimit;
     
+    document.getElementById('eqDesc').value = q.data?.description || '';
+    
     if(q.data) {
       importJsonToBuilder(q.data);
       document.getElementById('jsonEditor').value = JSON.stringify(q.data, null, 2);
@@ -152,6 +154,7 @@ async function saveQuestion() {
   const qid = document.getElementById('eqId').value.trim();
   const title = document.getElementById('eqTitle').value.trim();
   const timeLimit = parseInt(document.getElementById('eqTime').value) || 300;
+  const desc = document.getElementById('eqDesc').value.trim();
   
   if(!qid || !title) return alert('請填寫題目 ID 與標題');
   
@@ -168,8 +171,6 @@ async function saveQuestion() {
   dataObj.time_limit = timeLimit;
   dataObj.question_id = qid;
   dataObj.title = title;
-
-  dataObj.time_limit = timeLimit;
   
   const isExisting = allQuestions.some(q => q.question_id === qid);
   
@@ -181,7 +182,8 @@ async function saveQuestion() {
       nodes: dataObj.nodes,
       connections: dataObj.connections,
       layout: dataObj.layout,
-      time_limit: dataObj.time_limit
+      time_limit: dataObj.time_limit,
+      description: desc
     }
   };
   
