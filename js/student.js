@@ -517,6 +517,22 @@ function restartQuiz() {
   // 重新渲染畫面 (這會清空 dropState, 把左邊積木復原, 重置右側格子)
   renderQuiz();
   // 不用重置時間，讓時間繼續計算
+  
+  // 恢復按鈕顯示狀態
+  document.getElementById('btnConfirm').style.display = 'block';
+  document.getElementById('btnSubmit').style.display = 'none';
+}
+
+// ── 登出 ──
+function logout() {
+  if (confirm('確定要登出嗎？')) {
+    currentStudent = null;
+    document.getElementById('viewQuiz').style.display = 'none';
+    document.getElementById('viewLogin').style.display = 'flex';
+    document.getElementById('studentId').value = '';
+    document.getElementById('password').value = '';
+    if (timerInterval) clearInterval(timerInterval);
+  }
 }
 
 // ── 確認答案 ──
@@ -632,5 +648,6 @@ function showSuccessModal() {
   
   document.getElementById('modScore').textContent = `${scoreResult.correct}/${scoreResult.total}`;
   
+  document.getElementById('viewQuiz').style.display = 'none';
   mod.style.display = 'flex';
 }

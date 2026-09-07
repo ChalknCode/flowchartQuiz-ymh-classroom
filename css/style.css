@@ -109,7 +109,7 @@ body {
   border-radius: 14px; padding: 3px 12px;
   font-family: 'M PLUS Rounded 1c', sans-serif; font-size: 0.72rem; font-weight: 800; color: #fff;
 }
-.tb-user { background: #fff; border-radius: 14px; padding: 3px 12px; font-size: 0.68rem; font-weight: 700; color: #4f46e5; margin-left: auto; }
+.tb-user { background: #fff; border-radius: 14px; padding: 3px 12px; font-size: 0.68rem; font-weight: 700; color: #4f46e5; }
 .btn { border: none; border-radius: 9px; padding: 6px 16px; font-size: 0.76rem; font-weight: 800; font-family: 'M PLUS Rounded 1c', sans-serif; color: #fff; cursor: pointer; }
 .btn-ok { background: rgba(255,255,255,0.22); border: 1px solid rgba(255,255,255,0.4); }
 .btn-ok:hover:not(:disabled) { background: rgba(255,255,255,0.32); }
