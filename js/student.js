@@ -12,6 +12,7 @@ let timerInterval   = null;
 let totalSeconds    = 300;
 let timeElapsed     = 0;
 let scoreResult     = null;
+let actionCounts    = { confirm: 0, restart: 0 };
 
 // ── 初始化 ──
 window.onload = () => {
@@ -169,6 +170,37 @@ function startTimer() {
     
     if (totalSeconds <= 60) {
       timerEl.style.background = 'rgba(239,68,68,.35)';
+    } else {
+      timerEl.style.background = 'rgba(255,255,255,0.18)';
+    }
+  }, 1000);
+}
+
+function resumeTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  const timerEl = document.getElementById('tbTimer');
+  
+  timerInterval = setInterval(() => {
+    totalSeconds--;
+    timeElapsed++;
+    
+    if (totalSeconds <= 0) {
+      clearInterval(timerInterval);
+      timerEl.textContent = '⏱ 00:00';
+      timerEl.style.background = 'rgba(239,68,68,.4)'; // 紅色
+      // 時間到自動確認答案
+      confirmAnswer();
+      return;
+    }
+    
+    const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+    const s = String(totalSeconds % 60).padStart(2, '0');
+    timerEl.textContent = `⏱ ${m}:${s}`;
+    
+    if (totalSeconds <= 60) {
+      timerEl.style.background = 'rgba(239,68,68,.35)';
+    } else {
+      timerEl.style.background = 'rgba(255,255,255,0.18)';
     }
   }, 1000);
 }
@@ -181,6 +213,7 @@ async function loadQuestion(qId) {
     
     if (json.ok) {
       currentQuestion = json.question;
+      actionCounts = { confirm: 0, restart: 0 };
       document.getElementById('qTitle').textContent = currentQuestion.title || '無標題';
       
       const qDesc = document.getElementById('qDesc');
@@ -459,6 +492,9 @@ function handleDrop(e) {
   this.classList.add('filled');
   this.innerHTML = getShapeHTML(draggedNodeData.type, draggedNodeData.label, true);
   
+  // 記錄放進去的資料
+  const droppedId = draggedNodeData.id;
+  
   // 加入移除按鈕
   const rmBtn = document.createElement('div');
   rmBtn.className = 'btn-remove';
@@ -466,7 +502,7 @@ function handleDrop(e) {
   rmBtn.title = '移除';
   rmBtn.onclick = (ev) => {
     ev.stopPropagation();
-    removeBlock(zoneId, draggedNodeData.id, expectedType, this);
+    removeBlock(zoneId, droppedId, expectedType, this);
   };
   this.appendChild(rmBtn);
   
@@ -514,9 +550,14 @@ function checkAllFilled() {
 
 function restartQuiz() {
   if (!confirm('確定要清除所有已填答的積木並重新作答嗎？')) return;
+  
+  actionCounts.restart++;
+  
   // 重新渲染畫面 (這會清空 dropState, 把左邊積木復原, 重置右側格子)
   renderQuiz();
-  // 不用重置時間，讓時間繼續計算
+  
+  // 讓時間繼續計算
+  resumeTimer();
   
   // 恢復按鈕顯示狀態
   document.getElementById('btnConfirm').style.display = 'block';
@@ -537,6 +578,7 @@ function logout() {
 
 // ── 確認答案 ──
 function confirmAnswer() {
+  actionCounts.confirm++;
   let correctCount = 0;
   const total = currentQuestion.layout.length;
   
@@ -612,7 +654,9 @@ async function submitScore() {
       detail: {
         correct: scoreResult.correct,
         total: scoreResult.total,
-        time_seconds: timeElapsed
+        time_seconds: timeElapsed,
+        confirm_count: actionCounts.confirm,
+        restart_count: actionCounts.restart
       }
     }
   };

@@ -585,7 +585,7 @@ function renderScores() {
   tbody.innerHTML = '';
   
   if(filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8">尚無符合條件的成績資料</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10">尚無符合條件的成績資料</td></tr>';
     return;
   }
   
@@ -609,6 +609,8 @@ function renderScores() {
       <td style="color:${s.score===100?'#10b981':'#1f2937'}; font-weight:bold;">${s.score}</td>
       <td>${detail.correct||0} / ${detail.total||0}</td>
       <td>${timeStr}</td>
+      <td>${detail.confirm_count !== undefined ? detail.confirm_count : '-'}</td>
+      <td>${detail.restart_count !== undefined ? detail.restart_count : '-'}</td>
     `;
     tbody.appendChild(tr);
   });
