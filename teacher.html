@@ -274,8 +274,12 @@
             <select id="lbFilterQid" class="form-input" style="max-width:200px; font-size:0.85rem;" onchange="loadLeaderboard()">
               <option value="">選擇題目 (必選)</option>
             </select>
+            <select id="lbSortType" class="form-input" style="max-width:150px; font-size:0.85rem;" onchange="loadLeaderboard()">
+              <option value="time">作答速度 (由快到慢)</option>
+              <option value="submit">送出先後 (最早送出)</option>
+            </select>
           </div>
-          <p style="font-size:0.85rem; color:#6b7280; margin-bottom:15px;">※ 僅列出 100 分的學生，並依據作答時間由快到慢排序。</p>
+          <p id="lbDesc" style="font-size:0.85rem; color:#6b7280; margin-bottom:15px;">※ 僅列出 100 分的學生，目前的排序方式：作答速度。</p>
           <table>
             <thead>
               <tr>

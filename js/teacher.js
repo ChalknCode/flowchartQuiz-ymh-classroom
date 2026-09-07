@@ -642,13 +642,25 @@ async function renderLeaderboard() {
     return;
   }
   
-  // 依據花費時間由小到大排序 (時間相同的依據送出時間)
-  filtered.sort((a, b) => {
-    const ta = (a.detail && a.detail.time_seconds) ? a.detail.time_seconds : 9999;
-    const tb = (b.detail && b.detail.time_seconds) ? b.detail.time_seconds : 9999;
-    if(ta !== tb) return ta - tb;
-    return new Date(a.timestamp) - new Date(b.timestamp);
-  });
+  const sortType = document.getElementById('lbSortType').value;
+  const descEl = document.getElementById('lbDesc');
+  
+  if (sortType === 'time') {
+    descEl.textContent = '※ 僅列出 100 分的學生，目前的排序方式：作答速度 (由快到慢)。';
+    // 依據花費時間由小到大排序 (時間相同的依據送出時間)
+    filtered.sort((a, b) => {
+      const ta = (a.detail && a.detail.time_seconds) ? a.detail.time_seconds : 9999;
+      const tb = (b.detail && b.detail.time_seconds) ? b.detail.time_seconds : 9999;
+      if(ta !== tb) return ta - tb;
+      return new Date(a.timestamp) - new Date(b.timestamp);
+    });
+  } else {
+    descEl.textContent = '※ 僅列出 100 分的學生，目前的排序方式：送出先後 (最早送出)。';
+    // 依據送出時間由早到晚排序
+    filtered.sort((a, b) => {
+      return new Date(a.timestamp) - new Date(b.timestamp);
+    });
+  }
   
   tbody.innerHTML = '';
   filtered.forEach((s, idx) => {
