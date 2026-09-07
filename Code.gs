@@ -324,3 +324,56 @@ function getSheet(name) {
   }
   return sheet;
 }
+
+// ============================================================
+//  自動建立所有班級與動態查詢面板 (一次性執行)
+// ============================================================
+function setupSheets() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  
+  // 1. 建立 801~813 班級工作表
+  const classes = ['801','802','803','804','805','806','807','808','809','810','811','812','813'];
+  for (let c of classes) {
+    let sheetName = c + '班成績';
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+    // 在 A1 寫入 QUERY 函數，自動把分數表裡 C 欄 = 班級 的資料抓過來
+    sheet.getRange("A1").setFormula(`=QUERY('分數'!A:H, "SELECT * WHERE C = '${c}'")`);
+  }
+  
+  // 2. 建立動態查詢面板
+  let dashSheet = ss.getSheetByName('動態查詢面板');
+  if (!dashSheet) {
+    dashSheet = ss.insertSheet('動態查詢面板');
+  }
+  
+  // 設定下拉選單和欄位標題
+  dashSheet.getRange("A1").setValue("請選擇班級：");
+  dashSheet.getRange("A2").setValue("請選擇題目：");
+  dashSheet.getRange("B1").clearContent(); 
+  dashSheet.getRange("B2").clearContent(); 
+  
+  // 建立班級下拉選單 (B1)
+  let ruleClass = SpreadsheetApp.newDataValidation().requireValueInList(classes, true).setAllowInvalid(true).build();
+  dashSheet.getRange("B1").setDataValidation(ruleClass);
+  
+  // B2 題目選單 (這裡填入常見的題目 ID 供選，也可手動輸入)
+  let ruleQ = SpreadsheetApp.newDataValidation().requireValueInList(['Q001','Q002','Q003','Q004','Q005'], true).setAllowInvalid(true).build();
+  dashSheet.getRange("B2").setDataValidation(ruleQ);
+  
+  // 寫入超強動態 QUERY 語法到 A4
+  // 這樣如果 B1 空白就不限制班級，B2 空白就不限制題目
+  dashSheet.getRange("A4").setFormula(`=QUERY('分數'!A:H, "SELECT * WHERE 1=1 " & IF(B1="","", " AND C = '" & B1 & "' ") & IF(B2="","", " AND F = '" & B2 & "' "))`);
+  
+  // 上色美化
+  dashSheet.getRange("A1:A2").setBackground("#d9ead3").setFontWeight("bold");
+  dashSheet.getRange("B1:B2").setBackground("#fff2cc").setFontWeight("bold");
+  
+  // 自動調整欄寬
+  dashSheet.setColumnWidth(1, 150);
+  dashSheet.setColumnWidth(2, 150);
+  
+  return "建立完成！";
+}
